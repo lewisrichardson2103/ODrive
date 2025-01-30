@@ -486,7 +486,7 @@ def generate_endpoint_table(intf, bindto, idx):
     cnt = 0
 
     for k, prop in intf.get_all_attributes().items():
-        property_value_type = re.findall('^fibre\.Property<([^>]*), (readonly|readwrite)>$', prop['type'].fullname)
+        property_value_type = re.findall(r'^fibre\.Property<([^>]*), (readonly|readwrite)>$', prop['type'].fullname)
         #attr_bindto = join_name(bindto, bindings_map.get(join_name(intf['fullname'], k), k + ('_' if len(intf['functions']) or (intf['fullname'] in treat_as_classes) else '')))
         attr_bindto = intf.c_name + '::get_' + prop['name'] + '(' + bindto + ')'
         if len(property_value_type):
