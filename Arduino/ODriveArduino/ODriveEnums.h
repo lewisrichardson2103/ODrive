@@ -57,6 +57,16 @@ enum AxisState {
     AXIS_STATE_ENCODER_HALL_PHASE_CALIBRATION = 13,
 };
 
+// ODrive.BikeController.BikeState
+enum BikeState {
+    BIKE_STATE_UNDEFINED                     = 0,
+    BIKE_STATE_CALIBRATION                   = 1,
+    BIKE_STATE_IDLE                          = 2,
+    BIKE_STATE_CONTROL                       = 3,
+    BIKE_STATE_BRAKING                       = 4,
+    BIKE_STATE_ERROR                         = 5,
+};
+
 // ODrive.Encoder.Mode
 enum EncoderMode {
     ENCODER_MODE_INCREMENTAL                 = 0,
@@ -114,6 +124,16 @@ enum ODriveError {
 enum CanError {
     CAN_ERROR_NONE                           = 0x00000000,
     CAN_ERROR_DUPLICATE_CAN_IDS              = 0x00000001,
+};
+
+// ODrive.BikeController.Error
+enum BikeControllerError {
+    BIKE_CONTROLLER_ERROR_NONE               = 0x00000000,
+    BIKE_CONTROLLER_ERROR_INVALID_STATE      = 0x00000001,
+    BIKE_CONTROLLER_ERROR_MOTOR_FAILED       = 0x00000040,
+    BIKE_CONTROLLER_ERROR_ENCODER_FAILED     = 0x00000080,
+    BIKE_CONTROLLER_ERROR_CONTROLLER_FAILED  = 0x00000100,
+    BIKE_CONTROLLER_ERROR_OVER_TEMP          = 0x00000200,
 };
 
 // ODrive.Axis.Error

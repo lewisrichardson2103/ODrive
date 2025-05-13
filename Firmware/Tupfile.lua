@@ -73,6 +73,7 @@ odrive_firmware_pkg = {
         'MotorControl/arm_sin_f32.c',
         'MotorControl/arm_cos_f32.c',
         'MotorControl/low_level.cpp',
+        'MotorControl/bike_controller.cpp',
         'MotorControl/axis.cpp',
         'MotorControl/motor.cpp',
         'MotorControl/thermistor.cpp',

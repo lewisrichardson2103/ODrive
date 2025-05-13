@@ -180,7 +180,6 @@ interfaces:
               error_cnt: readonly uint32
       user_config_loaded: readonly uint32
       misconfigured:
-        # TODO: make this a system error
         type: readonly bool
         doc: |
           If this property is true, something is bad in the configuration. The
@@ -199,7 +198,6 @@ interfaces:
              or two GPIOs that are mutually exclusive in their interrupt
              capability were both used as interrupt input.
              Example: `Axis:config.step_gpio_pin` of both axes were set to the same GPIO.
-
       oscilloscope: { type: Oscilloscope }
       can: { type: Can }
       test_property: uint32
@@ -466,6 +464,86 @@ interfaces:
       endpoint: endpoint_ref
       min: float32
       max: float32
+
+  ODrive.BikeController:
+    c_is_class: True
+    brief: Controller implementation for all the bike activity. Higher level than each axis.
+    attributes:
+      error:
+        nullflag: NONE
+        flags:
+          INVALID_STATE:
+            brief: An invalid state was requested.
+            doc: |
+              You tried to run a state before you are allowed to. Typically you
+              tried to run encoder calibration or closed loop control before the
+              motor was calibrated, or you tried to run closed loop control
+              before the encoder was calibrated.
+          MOTOR_FAILED:
+            bit: 6
+            doc: Check `motor.error` for more information.
+          ENCODER_FAILED:
+            doc: Check `encoder.error` for more information.
+          CONTROLLER_FAILED:
+          OVER_TEMP:
+            # unused
+            doc: Check `motor.error` for more details.
+      current_state:
+        type: readonly BikeState
+        brief: The current state of the axis
+      requested_state:
+        type: BikeState
+        brief: The user's commanded bike state
+        doc: |
+          This is used to command the bike controller to change state or perform certain routines.
+          Values input here will be "consumed" and queued by the state machine handler.  Thus, reading this value back will usually show `UNDEFINED` (0).
+      cadence_estimate:
+        type: float32
+        doc: The current cadence value.
+      resistance_torque:
+        type: float32
+        doc: The resistance torque felt at the pedals in Nm.
+      rider_torque_estimate:
+        type: float32
+        doc: The estimated rider torque based on torque on the motor and inertial interpolation.
+      wheel_speed_estimate:
+        type: float32
+        doc: The current wheel speed value.
+      drive_torque_estimate:
+        type: float32
+        doc: The torque output of the drive motor in Nm.
+
+      config:
+        c_is_class: False
+        attributes:
+          target_cadence:
+            type: float32
+            doc: The target cadence to maintain whilst riding
+          gear_ratio_pedal:
+            type: float32
+            doc: |
+              The internal gear ratio of the input side. I.e. the gear ratio that describes the motor speed
+              compared with the pedal speed.
+          gear_ratio_drive:
+            type: float32
+            doc: |
+              The internal gear ratio of the output side. I.e. the gear ratio that describes the speed of the wheel
+              compared to the drive motor speed.
+          cadence_smoothing_alpha:
+            type: float32
+            doc: A low pass filter is used to smooth the values for cadence, this is the alpha value.
+          wheel_speed_smoothing_alpha:
+            type: float32
+            doc: A low pass filter is used to smooth the values for wheel speed, this is the alpha value.
+          torque_smoothing_alpha:
+            type: float32
+            doc: A low pass filter to smooth the values for torque read from the motors
+      pedalAxis: Axis
+      driveAxis: Axis
+      task_times:
+        c_is_class: False
+        attributes:
+          update: TaskTimer
 
   ODrive.Axis:
     c_is_class: True
@@ -1847,6 +1925,21 @@ valuetypes:
       ENCODER_HALL_PHASE_CALIBRATION:
         brief: Rotate the motor for 30s to calibrate hall sensor edge offsets
         doc: The phase offset is not calibrated at this time, so the map is only relative
+
+  ODrive.BikeController.BikeState:
+    values:
+      UNDEFINED:
+        doc: Initial state
+      CALIBRATION:
+        doc: The ODrive will runn a calibration sequence on both motors.
+      IDLE:
+        doc: Set both axis states to IDLE so that we free wheel.
+      CONTROL:
+        doc: Both motor axes are under closed loop control.
+      BRAKING:
+        doc: Drive motor is in regenerative braking mode.
+      ERROR:
+        doc: The ODrive is in an error state on one or more of the axes.
 
   ODrive.Encoder.Mode:
     values:

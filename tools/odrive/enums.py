@@ -47,6 +47,14 @@ AXIS_STATE_HOMING                        = 11
 AXIS_STATE_ENCODER_HALL_POLARITY_CALIBRATION = 12
 AXIS_STATE_ENCODER_HALL_PHASE_CALIBRATION = 13
 
+# ODrive.BikeController.BikeState
+BIKE_STATE_UNDEFINED                     = 0
+BIKE_STATE_CALIBRATION                   = 1
+BIKE_STATE_IDLE                          = 2
+BIKE_STATE_CONTROL                       = 3
+BIKE_STATE_BRAKING                       = 4
+BIKE_STATE_ERROR                         = 5
+
 # ODrive.Encoder.Mode
 ENCODER_MODE_INCREMENTAL                 = 0
 ENCODER_MODE_HALL                        = 1
@@ -93,6 +101,14 @@ ODRIVE_ERROR_INVALID_BRAKE_RESISTANCE    = 0x00000080
 # ODrive.Can.Error
 CAN_ERROR_NONE                           = 0x00000000
 CAN_ERROR_DUPLICATE_CAN_IDS              = 0x00000001
+
+# ODrive.BikeController.Error
+BIKE_CONTROLLER_ERROR_NONE               = 0x00000000
+BIKE_CONTROLLER_ERROR_INVALID_STATE      = 0x00000001
+BIKE_CONTROLLER_ERROR_MOTOR_FAILED       = 0x00000040
+BIKE_CONTROLLER_ERROR_ENCODER_FAILED     = 0x00000080
+BIKE_CONTROLLER_ERROR_CONTROLLER_FAILED  = 0x00000100
+BIKE_CONTROLLER_ERROR_OVER_TEMP          = 0x00000200
 
 # ODrive.Axis.Error
 AXIS_ERROR_NONE                          = 0x00000000
@@ -205,6 +221,13 @@ class AxisState(enum.Enum):
     HOMING                                   = 11
     ENCODER_HALL_POLARITY_CALIBRATION        = 12
     ENCODER_HALL_PHASE_CALIBRATION           = 13
+class BikeState(enum.Enum):
+    UNDEFINED                                = 0
+    CALIBRATION                              = 1
+    IDLE                                     = 2
+    CONTROL                                  = 3
+    BRAKING                                  = 4
+    ERROR                                    = 5
 class EncoderMode(enum.Enum):
     INCREMENTAL                              = 0
     HALL                                     = 1
@@ -246,6 +269,13 @@ class ODriveError(enum.IntFlag):
 class CanError(enum.IntFlag):
     NONE                                     = 0x00000000
     DUPLICATE_CAN_IDS                        = 0x00000001
+class BikeControllerError(enum.IntFlag):
+    NONE                                     = 0x00000000
+    INVALID_STATE                            = 0x00000001
+    MOTOR_FAILED                             = 0x00000040
+    ENCODER_FAILED                           = 0x00000080
+    CONTROLLER_FAILED                        = 0x00000100
+    OVER_TEMP                                = 0x00000200
 class AxisError(enum.IntFlag):
     NONE                                     = 0x00000000
     INVALID_STATE                            = 0x00000001
