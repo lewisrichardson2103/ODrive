@@ -67,6 +67,13 @@ enum BikeState {
     BIKE_STATE_ERROR                         = 5,
 };
 
+// ODrive.BikeController.BikeMode
+enum BikeMode {
+    BIKE_MODE_MANUAL                         = 0,
+    BIKE_MODE_AUTO_CADENCE                   = 1,
+    BIKE_MODE_AUTO_POWER                     = 2,
+};
+
 // ODrive.Encoder.Mode
 enum EncoderMode {
     ENCODER_MODE_INCREMENTAL                 = 0,

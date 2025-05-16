@@ -55,6 +55,11 @@ BIKE_STATE_CONTROL                       = 3
 BIKE_STATE_BRAKING                       = 4
 BIKE_STATE_ERROR                         = 5
 
+# ODrive.BikeController.BikeMode
+BIKE_MODE_MANUAL                         = 0
+BIKE_MODE_AUTO_CADENCE                   = 1
+BIKE_MODE_AUTO_POWER                     = 2
+
 # ODrive.Encoder.Mode
 ENCODER_MODE_INCREMENTAL                 = 0
 ENCODER_MODE_HALL                        = 1
@@ -228,6 +233,10 @@ class BikeState(enum.Enum):
     CONTROL                                  = 3
     BRAKING                                  = 4
     ERROR                                    = 5
+class BikeMode(enum.Enum):
+    MANUAL                                   = 0
+    AUTO_CADENCE                             = 1
+    AUTO_POWER                               = 2
 class EncoderMode(enum.Enum):
     INCREMENTAL                              = 0
     HALL                                     = 1

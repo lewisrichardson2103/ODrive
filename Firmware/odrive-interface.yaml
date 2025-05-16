@@ -491,6 +491,15 @@ interfaces:
       current_state:
         type: readonly BikeState
         brief: The current state of the axis
+      mode:
+        type: BikeMode
+        brief: Select from MANUAL, AUTO_CADENCE, AUTO_POWER
+        doc: |
+          MANUAL uses pre-set (by the user, see bike config) gear ratios. You can select the current gear just like on a normal bike.
+          AUTO_CADENCE will act like a CVT to keep the rider at a set cadence.
+          AUTO_POWER will act like a CVT to keep the rider at a set power target.
+      currentGear:
+        type: uint32
       requested_state:
         type: BikeState
         brief: The user's commanded bike state
@@ -498,27 +507,42 @@ interfaces:
           This is used to command the bike controller to change state or perform certain routines.
           Values input here will be "consumed" and queued by the state machine handler.  Thus, reading this value back will usually show `UNDEFINED` (0).
       cadence_estimate:
-        type: float32
+        type: readonly float32
         doc: The current cadence value.
       resistance_torque:
         type: float32
         doc: The resistance torque felt at the pedals in Nm.
       rider_torque_estimate:
-        type: float32
+        type: readonly float32
         doc: The estimated rider torque based on torque on the motor and inertial interpolation.
+      rider_power_estimate:
+        type: readonly float32
       wheel_speed_estimate:
-        type: float32
+        type: readonly float32
         doc: The current wheel speed value.
       drive_torque_estimate:
-        type: float32
+        type: readonly float32
         doc: The torque output of the drive motor in Nm.
-
+      drive_power_estimate:
+        type: readonly float32
       config:
         c_is_class: False
         attributes:
           target_cadence:
             type: float32
             doc: The target cadence to maintain whilst riding
+          target_power:
+            type: float32
+            doc: The target power to maintain in AUTO_POWER mode
+          fixed_gear_0: { type: float32 }
+          fixed_gear_1: { type: float32 }
+          fixed_gear_2: { type: float32 }
+          fixed_gear_3: { type: float32 }
+          fixed_gear_4: { type: float32 }
+          fixed_gear_5: { type: float32 }
+          fixed_gear_6: { type: float32 }
+          fixed_gear_7: { type: float32 }
+          min_cadence: float32
           gear_ratio_pedal:
             type: float32
             doc: |
@@ -538,8 +562,10 @@ interfaces:
           torque_smoothing_alpha:
             type: float32
             doc: A low pass filter to smooth the values for torque read from the motors
-      pedalAxis: Axis
-      driveAxis: Axis
+          max_i_o_gear_ratio: float32
+          min_i_o_gear_ratio: float32
+          cadence_tolerance: float32
+          pedal_torque_gradient_threshold: float32
       task_times:
         c_is_class: False
         attributes:
@@ -1810,6 +1836,7 @@ interfaces:
             }
       axis0: { type: ODrive.Axis, c_name: get_axis(0) }
       axis1: { type: ODrive.Axis, c_name: get_axis(1) }
+      bike_controller: { type: ODrive.BikeController }
 
 valuetypes:
   ODrive.GpioMode:
@@ -1940,6 +1967,15 @@ valuetypes:
         doc: Drive motor is in regenerative braking mode.
       ERROR:
         doc: The ODrive is in an error state on one or more of the axes.
+
+  ODrive.BikeController.BikeMode:
+    values:
+      MANUAL:
+        doc: In this mode you will have a range of gears that you can choose from.
+      AUTO_CADENCE:
+        doc: In this mode the gear will be choses to match a target cadence. It will act like a CVT.
+      AUTO_POWER:
+        doc: In this mode the controller will try to keep the rider as close to a power target as it can.
 
   ODrive.Encoder.Mode:
     values:

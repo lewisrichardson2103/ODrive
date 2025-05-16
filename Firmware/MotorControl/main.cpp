@@ -28,7 +28,6 @@ uint32_t _reboot_cookie __attribute__((section(".noinit")));
 extern char _estack;  // provided by the linker script
 
 ODrive odrv{};
-BikeController bike_controller(axes[0], axes[1]);
 
 ConfigManager config_manager;
 
@@ -441,8 +440,8 @@ void ODrive::control_loop_cb(uint32_t timestamp) {
         axis.motor_.current_control_.update(timestamp);  // uses the output of controller_ or open_loop_contoller_ and encoder_ or sensorless_estimator_ or acim_estimator_
     }
 
-    MEASURE_TIME(bike_controller.task_times_.update)
-    bike_controller.run_control_loop();
+    MEASURE_TIME(odrv.bike_controller_.task_times_.update)
+    odrv.bike_controller_.run_control_loop();
 
     // Tell the axis threads that the control loop has finished
     for (auto& axis : axes) {
@@ -563,6 +562,8 @@ static void rtos_main(void*) {
     for (size_t i = 0; i < AXIS_COUNT; ++i) {
         axes[i].start_thread();
     }
+
+    odrv.bike_controller_.SetAxes(&axes[0], &axes[1]);
 
     odrv.system_stats_.fully_booted = true;
 
