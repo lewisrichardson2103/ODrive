@@ -139,8 +139,9 @@ void BikeController::limit_virtual_torque(void) {
     }
 
     virtual_torque_limited_ =
-        std::min(
+        std::clamp(
             virtual_torque_request_,
+            0.0f,
             virtual_torque_max_);
 }
 
