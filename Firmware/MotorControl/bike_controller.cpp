@@ -103,10 +103,29 @@ void BikeController::update_virtual_drivetrain_pi(float delta_t) {
         sync_speed_error_;
 
     if (delta_t > 0.0f) {
-        sync_integral_ +=
-            config_.sync_ki *
-            sync_speed_error_ *
-            delta_t;
+        const float candidate_integral =
+            sync_integral_ +
+            (config_.sync_ki *
+             sync_speed_error_ *
+             delta_t);
+
+        const float candidate_torque =
+            sync_proportional_ +
+            candidate_integral;
+
+        const bool pushing_below_lower_limit =
+            candidate_torque < 0.0f &&
+            sync_speed_error_ < 0.0f;
+
+        const bool pushing_above_upper_limit =
+            candidate_torque > virtual_torque_max_ &&
+            sync_speed_error_ > 0.0f;
+
+        if (!pushing_below_lower_limit &&
+            !pushing_above_upper_limit) {
+            sync_integral_ =
+                candidate_integral;
+        }
     }
 
     virtual_torque_request_ =
@@ -167,8 +186,8 @@ void BikeController::update_values(void) {
 
     // 4. Virtual drivetrain measurements
     update_sync_speed_error();
-    update_virtual_drivetrain_pi(delta_t);
     update_virtual_torque_authority();
+    update_virtual_drivetrain_pi(delta_t);
     limit_virtual_torque();
 
     // 5. Legacy transitional calculations
