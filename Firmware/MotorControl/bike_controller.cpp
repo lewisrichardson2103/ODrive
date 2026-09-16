@@ -144,11 +144,13 @@ void BikeController::update_virtual_torque_authority(void) {
         return;
     }
 
+    const float assist_ratio =
+        std::max(0.0f, config_.assist_ratio);
+
     virtual_torque_max_ =
-        std::max(
-            0.0f,
-            rider_torque_estimate_ /
-                input_output_gear_ratio_);
+        ((1.0f + assist_ratio) *
+         rider_torque_estimate_) /
+        input_output_gear_ratio_;
 }
 
 void BikeController::limit_virtual_torque(void) {
@@ -171,11 +173,18 @@ void BikeController::update_virtual_torque_commands(void) {
         return;
     }
 
+    const float assist_ratio =
+        std::max(0.0f, config_.assist_ratio);
+
+    human_fraction_ =
+        1.0f / (1.0f + assist_ratio);
+
     wheel_torque_command_ =
         virtual_torque_limited_;
 
     crank_torque_command_ =
-        -input_output_gear_ratio_ *
+        -human_fraction_ *
+        input_output_gear_ratio_ *
         virtual_torque_limited_;
 }
 

@@ -548,6 +548,11 @@ interfaces:
         type: readonly float32
       wheel_torque_command:
         type: readonly float32
+      human_fraction:
+        type: readonly float32
+        doc: |
+          Fraction of virtual drivetrain reaction supplied by the rider.
+          1 = unassisted, 0.5 = equal rider/battery contribution.
       config:
         c_is_class: False
         attributes:
@@ -605,6 +610,11 @@ interfaces:
           sync_ki:
             type: float32
             doc: Virtual drivetrain integral gain.
+          assist_ratio:
+            type: float32
+            doc: |
+              Assistance level of battery power to assist the rider.
+              0 = no assist, 1 = 100% additional assist
       task_times:
         c_is_class: False
         attributes:

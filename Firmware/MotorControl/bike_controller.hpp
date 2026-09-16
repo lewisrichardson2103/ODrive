@@ -61,6 +61,8 @@ class BikeController : public ODriveIntf::BikeControllerIntf {
 
         float sync_kp = 0.0f;  // Nm / (rad/s)
         float sync_ki = 0.0f;  // Nm / rad
+
+        float assist_ratio = 0.0f;  // 0 = no assist, 1 = 100% additional assist
     };
 
     struct TaskTimes {
@@ -90,6 +92,8 @@ class BikeController : public ODriveIntf::BikeControllerIntf {
     float virtual_torque_request_ = 0.0f;  // Nm, wheel-side virtual torque - raw PI request
     float virtual_torque_max_ = 0.0f;      // Nm, wheel-side rider authority
     float virtual_torque_limited_ = 0.0f;  // Nm, PI request after authority limit
+
+    float human_fraction_ = 1.0f;
 
     float crank_torque_command_ = 0.0f;  // Nm at crank
     float wheel_torque_command_ = 0.0f;  // Nm at wheel
