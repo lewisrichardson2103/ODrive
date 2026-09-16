@@ -164,6 +164,21 @@ void BikeController::limit_virtual_torque(void) {
             virtual_torque_max_);
 }
 
+void BikeController::update_virtual_torque_commands(void) {
+    if (current_state_ != BIKE_STATE_CONTROL) {
+        crank_torque_command_ = 0.0f;
+        wheel_torque_command_ = 0.0f;
+        return;
+    }
+
+    wheel_torque_command_ =
+        virtual_torque_limited_;
+
+    crank_torque_command_ =
+        -input_output_gear_ratio_ *
+        virtual_torque_limited_;
+}
+
 void BikeController::update_values(void) {
     const unsigned long now = micros();
 
@@ -189,12 +204,7 @@ void BikeController::update_values(void) {
     update_virtual_torque_authority();
     update_virtual_drivetrain_pi(delta_t);
     limit_virtual_torque();
-
-    // 5. Legacy transitional calculations
-    target_resistance_torque_ =
-        drive_torque_estimate_ *
-        input_output_gear_ratio_ *
-        -1.0f;
+    update_virtual_torque_commands();
 }
 
 void BikeController::run_control_loop(void) {
@@ -242,9 +252,6 @@ void BikeController::run_control_loop(void) {
             driveAxis_->controller_.input_torque_ = 0.0f;
 
             if (rider_active()) {
-                pedalAxis_->controller_.input_torque_ = 0.0f;
-                driveAxis_->controller_.input_torque_ = 0.0f;
-
                 pedalAxis_->requested_state_ =
                     ODriveIntf::AxisIntf::AXIS_STATE_CLOSED_LOOP_CONTROL;
 
@@ -276,9 +283,13 @@ void BikeController::run_control_loop(void) {
                 requested_state_ = BIKE_STATE_IDLE;
                 reset_control_state();
             } else {
-                // Transitional Stage 5 behaviour.
-                pedalAxis_->controller_.input_torque_ = target_resistance_torque_ / config_.gear_ratio_pedal;
-                driveAxis_->controller_.input_torque_ = 0.0f;
+                pedalAxis_->controller_.input_torque_ =
+                    crank_torque_command_ /
+                    config_.gear_ratio_pedal;
+
+                driveAxis_->controller_.input_torque_ =
+                    wheel_torque_command_ /
+                    config_.gear_ratio_drive;
             }
         } break;
 
@@ -596,4 +607,7 @@ void BikeController::reset_control_state(void) {
     virtual_torque_request_ = 0.0f;
     virtual_torque_max_ = 0.0f;
     virtual_torque_limited_ = 0.0f;
+
+    crank_torque_command_ = 0.0f;
+    wheel_torque_command_ = 0.0f;
 }

@@ -552,6 +552,10 @@ interfaces:
         doc: |
           Virtual drivetrain torque request after applying rider
           torque authority, in Nm.
+      crank_torque_command:
+        type: readonly float32
+      wheel_torque_command:
+        type: readonly float32
       config:
         c_is_class: False
         attributes:

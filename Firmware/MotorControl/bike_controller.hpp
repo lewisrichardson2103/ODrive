@@ -82,7 +82,6 @@ class BikeController : public ODriveIntf::BikeControllerIntf {
     float rider_torque_estimate_ = 0.0f;
     float rider_torque_gradient_ = 0.0f;
     float rider_power_estimate_ = 0.0f;
-    float target_resistance_torque_ = 0.0f;
 
     float input_output_gear_ratio_ = 1.0f;  // 1:1 at the start
     float target_input_output_gear_ratio_ = 1.0f;
@@ -93,6 +92,9 @@ class BikeController : public ODriveIntf::BikeControllerIntf {
     float virtual_torque_request_ = 0.0f;  // Nm, wheel-side virtual torque - raw PI request
     float virtual_torque_max_ = 0.0f;      // Nm, wheel-side rider authority
     float virtual_torque_limited_ = 0.0f;  // Nm, PI request after authority limit
+
+    float crank_torque_command_ = 0.0f;  // Nm at crank
+    float wheel_torque_command_ = 0.0f;  // Nm at wheel
 
     float wheel_speed_estimate_ = 0.0f;  // rad/s
     float wheel_accel_estimate_ = 0.0f;  // rad/s^2
@@ -118,6 +120,8 @@ class BikeController : public ODriveIntf::BikeControllerIntf {
     void update_virtual_drivetrain_pi(float delta_t);
     void update_virtual_torque_authority(void);
     void limit_virtual_torque(void);
+
+    void update_virtual_torque_commands(void);
 
     float get_cadence_rpm() const;
     void update_values(void);
