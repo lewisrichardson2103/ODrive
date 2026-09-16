@@ -542,6 +542,16 @@ interfaces:
       virtual_torque_request:
         type: readonly float32
         doc: Nm, wheel-side virtual torque output from virtual gearbox pi controller
+      virtual_torque_max:
+        type: readonly float32
+        doc: |
+          Maximum wheel-side virtual drivetrain torque currently
+          available from rider input, in Nm.
+      virtual_torque_limited:
+        type: readonly float32
+        doc: |
+          Virtual drivetrain torque request after applying rider
+          torque authority, in Nm.
       config:
         c_is_class: False
         attributes:

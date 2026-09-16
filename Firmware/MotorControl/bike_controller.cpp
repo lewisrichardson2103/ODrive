@@ -114,6 +114,36 @@ void BikeController::update_virtual_drivetrain_pi(float delta_t) {
         sync_integral_;
 }
 
+void BikeController::update_virtual_torque_authority(void) {
+    if (current_state_ != BIKE_STATE_CONTROL) {
+        virtual_torque_max_ = 0.0f;
+        return;
+    }
+
+    if (input_output_gear_ratio_ <= 0.0f) {
+        virtual_torque_max_ = 0.0f;
+        return;
+    }
+
+    virtual_torque_max_ =
+        std::max(
+            0.0f,
+            rider_torque_estimate_ /
+                input_output_gear_ratio_);
+}
+
+void BikeController::limit_virtual_torque(void) {
+    if (current_state_ != BIKE_STATE_CONTROL) {
+        virtual_torque_limited_ = 0.0f;
+        return;
+    }
+
+    virtual_torque_limited_ =
+        std::min(
+            virtual_torque_request_,
+            virtual_torque_max_);
+}
+
 void BikeController::update_values(void) {
     const unsigned long now = micros();
 
@@ -137,6 +167,8 @@ void BikeController::update_values(void) {
     // 4. Virtual drivetrain measurements
     update_sync_speed_error();
     update_virtual_drivetrain_pi(delta_t);
+    update_virtual_torque_authority();
+    limit_virtual_torque();
 
     // 5. Legacy transitional calculations
     target_resistance_torque_ =
@@ -542,4 +574,6 @@ void BikeController::reset_control_state(void) {
     sync_integral_ = 0.0f;
     sync_proportional_ = 0.0f;
     virtual_torque_request_ = 0.0f;
+    virtual_torque_max_ = 0.0f;
+    virtual_torque_limited_ = 0.0f;
 }
