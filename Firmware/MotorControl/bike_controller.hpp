@@ -42,7 +42,9 @@ class BikeController : public ODriveIntf::BikeControllerIntf {
         float fixed_gear_6 = 3.8f;
         float fixed_gear_7 = 4.0f;
 
-        float min_cadence = 5.0f;
+        float engage_cadence = 5.0f;     // rpm
+        float disengage_cadence = 2.0f;  // rpm
+
         float gear_ratio_pedal = 1.0f;
         float gear_ratio_drive = 1.0f;
         float cadence_smoothing_alpha = 1.0f;
@@ -109,8 +111,10 @@ class BikeController : public ODriveIntf::BikeControllerIntf {
 
     void check_axis_states(void);
     void update_bike_state(void);
+    void reset_control_state(void);
 
-    bool should_freewheel(void);
+    bool rider_active(void) const;
+    bool rider_stopped(void) const;
 
    private:
     float _last_crank_speed_estimate = 0.0f;

@@ -542,7 +542,14 @@ interfaces:
           fixed_gear_5: { type: float32 }
           fixed_gear_6: { type: float32 }
           fixed_gear_7: { type: float32 }
-          min_cadence: float32
+          engage_cadence:
+            type: float32
+            doc: |
+              The cadence upper threshold for determining when a rider has started pedaling
+          disengage_cadence:
+            type: float32
+            doc: |
+              The cadence lower threshold for determining when a rider has stopped pedaling
           gear_ratio_pedal:
             type: float32
             doc: |

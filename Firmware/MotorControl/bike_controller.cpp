@@ -139,35 +139,52 @@ void BikeController::run_control_loop(void) {
                 // bool ready = pedalAxis_->motor_.is_calibrated_ && pedalAxis_->encoder_.is_ready_ && driveAxis_->motor_.is_calibrated_ && driveAxis_->encoder_.is_ready_;
                 // We should now be able to move on
                 requested_state_ = BIKE_STATE_IDLE;
+                reset_control_state();
             }
         } break;
 
         case BIKE_STATE_IDLE: {
-            // In this state we just look for movement of the pedals
-            if (get_cadence_rpm() >= config_.min_cadence) {
-                pedalAxis_->requested_state_ = ODriveIntf::AxisIntf::AXIS_STATE_CLOSED_LOOP_CONTROL;
-                pedalAxis_->controller_.input_torque_ = 0.0;
-                driveAxis_->requested_state_ = ODriveIntf::AxisIntf::AXIS_STATE_CLOSED_LOOP_CONTROL;
+            // IDLE means no commanded torque.
+            pedalAxis_->controller_.input_torque_ = 0.0f;
+            driveAxis_->controller_.input_torque_ = 0.0f;
+
+            // Keep axes physically idle until the rider starts pedalling.
+            pedalAxis_->requested_state_ =
+                ODriveIntf::AxisIntf::AXIS_STATE_IDLE;
+
+            driveAxis_->requested_state_ =
+                ODriveIntf::AxisIntf::AXIS_STATE_IDLE;
+
+            if (rider_active()) {
+                pedalAxis_->controller_.input_torque_ = 0.0f;
                 driveAxis_->controller_.input_torque_ = 0.0f;
+
+                pedalAxis_->requested_state_ =
+                    ODriveIntf::AxisIntf::AXIS_STATE_CLOSED_LOOP_CONTROL;
+
+                driveAxis_->requested_state_ =
+                    ODriveIntf::AxisIntf::AXIS_STATE_CLOSED_LOOP_CONTROL;
+
                 requested_state_ = BIKE_STATE_CONTROL;
-            } else {
             }
         } break;
 
         case BIKE_STATE_CONTROL: {
-            // We have done all the calculations, so here we decide what to do and set the motor controllers values
-
-            if (should_freewheel()) {
-                // We want to set both motors to idle state to freewheel
-                pedalAxis_->controller_.input_torque_ = 0.0;
-                pedalAxis_->requested_state_ = ODriveIntf::AxisIntf::AXIS_STATE_IDLE;
-
+            if (rider_stopped()) {
+                pedalAxis_->controller_.input_torque_ = 0.0f;
                 driveAxis_->controller_.input_torque_ = 0.0f;
-                driveAxis_->requested_state_ = ODriveIntf::AxisIntf::AXIS_STATE_IDLE;
+
+                pedalAxis_->requested_state_ =
+                    ODriveIntf::AxisIntf::AXIS_STATE_IDLE;
+
+                driveAxis_->requested_state_ =
+                    ODriveIntf::AxisIntf::AXIS_STATE_IDLE;
+
                 requested_state_ = BIKE_STATE_IDLE;
+                reset_control_state();
             } else {
-                // We want to set the targets
-                pedalAxis_->controller_.input_torque_ = (target_resistance_torque_ / config_.gear_ratio_pedal);
+                // Transitional Stage 5 behaviour.
+                pedalAxis_->controller_.input_torque_ = target_resistance_torque_ / config_.gear_ratio_pedal;
                 driveAxis_->controller_.input_torque_ = 0.0f;
             }
         } break;
@@ -175,6 +192,7 @@ void BikeController::run_control_loop(void) {
         case BIKE_STATE_BRAKING: {
             // We have seen that we are in a braking scenario so we need to decide how much breaking to do and set the negative torque
             requested_state_ = BIKE_STATE_IDLE;  // For now I don't know what to do so am just ignoring this
+            reset_control_state();
         } break;
 
         case BIKE_STATE_ERROR: {
@@ -360,29 +378,12 @@ void BikeController::calculate_input_output_gear_ratio(void) {
     }
 }
 
-bool BikeController::should_freewheel(void) {
-    return false;
-    // We arent pedaling
-    if ((get_cadence_rpm() < config_.min_cadence)) {
-        return true;
-    }
+bool BikeController::rider_active(void) const {
+    return get_cadence_rpm() >= config_.engage_cadence;
+}
 
-    // Look for coasting
-    if ((crank_speed_estimate_ * input_output_gear_ratio_) < wheel_speed_estimate_) {
-        // Is the rider struggling or just reducing cadence
-        if ((crank_accel_estimate_ < 0.0f) && (rider_torque_gradient_ >= config_.pedal_torque_gradient_threshold)) {
-            // Rider cadence droping and they are having to input more torque, we need to review the gear ratio
-            return false;
-        } else if ((crank_accel_estimate_ < 0.0f) && (rider_torque_gradient_ <= 0.0f)) {
-            // Rider cadence dropping and they are applying less or the same torque, probably just want to coast
-            return true;
-        } else {
-            // Not sure, I think it is best to review the current situation
-            return false;
-        }
-    } else {
-        return false;
-    }
+bool BikeController::rider_stopped(void) const {
+    return get_cadence_rpm() <= config_.disengage_cadence;
 }
 
 void BikeController::check_axis_states(void) {
@@ -466,4 +467,8 @@ void BikeController::update_bike_state(void) {
     }
 
     check_axis_states();
+}
+
+void BikeController::reset_control_state(void) {
+    // Empty for now.
 }
