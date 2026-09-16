@@ -91,13 +91,18 @@ class BikeController : public ODriveIntf::BikeControllerIntf {
    private:
     void start_bike_controller(void);
 
-    void update_values(void);
-    void update_cadence(float delta_t);
+    // new functions
+    void update_measurements(float delta_t);
+    void update_crank_speed(float delta_t);
+    void update_wheel_speed(float delta_t);
+    void update_crank_motor_torque(void);
+    void update_wheel_motor_torque(void);
+
     float get_cadence_rpm() const;
+    void update_values(void);
 
     void update_rider_torques(float delta_t);
     void calculate_input_output_gear_ratio(void);
-    void update_wheel_speed(float delta_t);
     void update_drive_torque(float delta_t);
 
     void check_axis_states(void);
@@ -112,6 +117,10 @@ class BikeController : public ODriveIntf::BikeControllerIntf {
     float _last_drive_torque = 0.0f;
     float _last_wheel_speed_estimate = 0.0f;
     unsigned long _last_update_time = 0.0;
+
+    // New Variables
+    float crank_motor_torque_ = 0.0f;  // Nm at crank after physical gearbox
+    float wheel_motor_torque_ = 0.0f;  // Nm at wheel after physical gearbox
 
     Axis* pedalAxis_ = nullptr;
     Axis* driveAxis_ = nullptr;

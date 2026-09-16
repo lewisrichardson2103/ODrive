@@ -51,28 +51,61 @@ void BikeController::start_bike_controller(void) {
     driveAxis_->controller_.config_.vel_integrator_gain = 0.025f;  // Tune these
 }
 
-void BikeController::update_values(void) {
-    unsigned long now = micros();
-    float delta_t = now - _last_update_time;
-    delta_t *= MICRO_TO_SEC;  // seconds
-    _last_update_time = now;
-
-    // Update current velocities
-    update_cadence(delta_t);
+void BikeController::update_measurements(float delta_t) {
+    update_crank_speed(delta_t);
     update_wheel_speed(delta_t);
 
-    // Calculate current torque values
+    update_crank_motor_torque();
+    update_wheel_motor_torque();
+}
+
+void BikeController::update_crank_motor_torque(void) {
+    const float motor_torque =
+        pedalAxis_->motor_.config_.torque_constant *
+        pedalAxis_->motor_.current_control_.Iq_measured_;
+
+    crank_motor_torque_ =
+        abs(motor_torque) *
+        config_.gear_ratio_pedal;
+}
+
+void BikeController::update_wheel_motor_torque(void) {
+    const float motor_torque =
+        driveAxis_->motor_.config_.torque_constant *
+        driveAxis_->motor_.current_control_.Iq_measured_;
+
+    wheel_motor_torque_ =
+        abs(motor_torque) *
+        config_.gear_ratio_drive;
+}
+
+void BikeController::update_values(void) {
+    const unsigned long now = micros();
+
+    float delta_t =
+        (now - _last_update_time) *
+        MICRO_TO_SEC;
+
+    _last_update_time = now;
+
+    // 1. Hardware measurements
+    update_measurements(delta_t);
+
+    // 2. Derived estimates
     update_rider_torques(delta_t);
     update_drive_torque(delta_t);
 
-    // Calculate required gear ratio
+    // 3. Existing control calculations
     calculate_input_output_gear_ratio();
 
-    // Update target wheel speed from cadence and gear ratio
-    target_wheel_speed_ = crank_speed_estimate_ * input_output_gear_ratio_;
+    target_wheel_speed_ =
+        crank_speed_estimate_ *
+        input_output_gear_ratio_;
 
-    // Update target pedal resistance
-    target_resistance_torque_ = (drive_torque_estimate_ * input_output_gear_ratio_) * -1.0f;
+    target_resistance_torque_ =
+        drive_torque_estimate_ *
+        input_output_gear_ratio_ *
+        -1.0f;
 }
 
 void BikeController::run_control_loop(void) {
@@ -159,16 +192,14 @@ float BikeController::get_cadence_rpm() const {
     return crank_speed_estimate_ * RAD_PER_SEC_TO_RPM;
 }
 
-void BikeController::update_cadence(float delta_t) {
+void BikeController::update_crank_speed(float delta_t) {
     std::optional<float> maybe_vel =
         pedalAxis_->encoder_.vel_estimate_.any();
 
     if (maybe_vel.has_value()) {
-        // ODrive encoder velocity is in turns/s.
         const float motor_speed_rad_s =
             maybe_vel.value() * TURNS_PER_SEC_TO_RAD_PER_SEC;
 
-        // Convert motor speed to crank speed through the fixed physical gearbox.
         float newVal =
             motor_speed_rad_s / config_.gear_ratio_pedal;
 
@@ -186,7 +217,9 @@ void BikeController::update_cadence(float delta_t) {
                 delta_t;
         }
 
-        _last_crank_speed_estimate = crank_speed_estimate_;
+        _last_crank_speed_estimate =
+            crank_speed_estimate_;
+
         cadence_estimate_ = get_cadence_rpm();
     }
 }
@@ -222,9 +255,8 @@ void BikeController::update_wheel_speed(float delta_t) {
 }
 
 void BikeController::update_rider_torques(float delta_t) {
-    float newVal = abs(pedalAxis_->motor_.config_.torque_constant * pedalAxis_->motor_.current_control_.Iq_measured_);
-    // The motor torque needs to be multiplied by the internal gear ratio
-    newVal *= config_.gear_ratio_pedal;
+    float newVal = crank_motor_torque_;
+
     // Low pass filter
     resistance_torque_ = config_.torque_smoothing_alpha * newVal + (1.0f - config_.torque_smoothing_alpha) * resistance_torque_;
 
@@ -250,10 +282,7 @@ void BikeController::update_rider_torques(float delta_t) {
 }
 
 void BikeController::update_drive_torque(float delta_t) {
-    float newVal = abs(driveAxis_->motor_.config_.torque_constant * driveAxis_->motor_.current_control_.Iq_measured_);
-
-    // The motor torque needs to be multiplied by the internal gear ratio
-    newVal *= config_.gear_ratio_drive;
+    const float newVal = wheel_motor_torque_;
 
     // Low pass filter
     drive_torque_estimate_ = config_.torque_smoothing_alpha * newVal + (1.0f - config_.torque_smoothing_alpha) * drive_torque_estimate_;
