@@ -519,9 +519,6 @@ interfaces:
       cadence_estimate:
         type: readonly float32
         doc: The current cadence value.
-      resistance_torque:
-        type: float32
-        doc: The resistance torque felt at the pedals in Nm.
       rider_torque_estimate:
         type: readonly float32
         doc: The estimated rider torque based on torque on the motor and inertial interpolation.
@@ -530,11 +527,6 @@ interfaces:
       wheel_speed_estimate:
         type: readonly float32
         doc: The current wheel speed value.
-      drive_torque_estimate:
-        type: readonly float32
-        doc: The torque output of the drive motor in Nm.
-      drive_power_estimate:
-        type: readonly float32
       sync_proportional:
         type: readonly float32
       sync_integral:

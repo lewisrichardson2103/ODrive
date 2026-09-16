@@ -77,8 +77,6 @@ class BikeController : public ODriveIntf::BikeControllerIntf {
     float crank_accel_estimate_ = 0.0f;  // rad/s^2
     float cadence_estimate_ = 0.0f;      // rpm
 
-    float resistance_torque_ = 0.0f;
-    float resistance_torque_gradient_ = 0.0f;
     float rider_torque_estimate_ = 0.0f;
     float rider_torque_gradient_ = 0.0f;
     float rider_power_estimate_ = 0.0f;
@@ -99,10 +97,7 @@ class BikeController : public ODriveIntf::BikeControllerIntf {
     float wheel_speed_estimate_ = 0.0f;  // rad/s
     float wheel_accel_estimate_ = 0.0f;  // rad/s^2
 
-    float target_wheel_speed_ = 0.0f;
-    float drive_torque_estimate_ = 0.0f;
-    float drive_torque_gradient_ = 0.0f;
-    float drive_power_estimate_ = 0.0f;
+    float virtual_wheel_speed_ = 0.0f;
 
     Config_t config_;
     TaskTimes task_times_;
@@ -110,7 +105,6 @@ class BikeController : public ODriveIntf::BikeControllerIntf {
    private:
     void start_bike_controller(void);
 
-    // new functions
     void update_measurements(float delta_t);
     void update_crank_speed(float delta_t);
     void update_wheel_speed(float delta_t);
@@ -127,7 +121,6 @@ class BikeController : public ODriveIntf::BikeControllerIntf {
     void update_values(void);
 
     void update_rider_torques(float delta_t);
-    void update_drive_torque(float delta_t);
 
     void calculate_target_gear_ratio(void);
     void update_active_gear_ratio(float delta_t);
@@ -141,13 +134,10 @@ class BikeController : public ODriveIntf::BikeControllerIntf {
 
    private:
     float _last_crank_speed_estimate = 0.0f;
-    float _last_resistance_torque = 0.0f;
     float last_rider_torque = 0.0f;
-    float _last_drive_torque = 0.0f;
     float _last_wheel_speed_estimate = 0.0f;
     unsigned long _last_update_time = 0.0;
 
-    // New Variables
     float crank_motor_torque_ = 0.0f;  // Nm at crank after physical gearbox
     float wheel_motor_torque_ = 0.0f;  // Nm at wheel after physical gearbox
 

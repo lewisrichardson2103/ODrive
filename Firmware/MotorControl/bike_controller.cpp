@@ -82,12 +82,12 @@ void BikeController::update_wheel_motor_torque(void) {
 }
 
 void BikeController::update_sync_speed_error(void) {
-    target_wheel_speed_ =
+    virtual_wheel_speed_ =
         input_output_gear_ratio_ *
         crank_speed_estimate_;
 
     sync_speed_error_ =
-        target_wheel_speed_ -
+        virtual_wheel_speed_ -
         wheel_speed_estimate_;
 }
 
@@ -193,7 +193,6 @@ void BikeController::update_values(void) {
 
     // 2. Derived estimates
     update_rider_torques(delta_t);
-    update_drive_torque(delta_t);
 
     // 3. Existing control calculations
     calculate_target_gear_ratio();
@@ -374,32 +373,8 @@ void BikeController::update_wheel_speed(float delta_t) {
 }
 
 void BikeController::update_rider_torques(float delta_t) {
-    // Positive resistance magnitude for legacy telemetry/control.
-    const float raw_resistance_torque =
-        std::max(0.0f, -crank_motor_torque_);
-
-    resistance_torque_ =
-        config_.torque_smoothing_alpha *
-            raw_resistance_torque +
-        (1.0f - config_.torque_smoothing_alpha) *
-            resistance_torque_;
-
-    const float resistance_delta =
-        resistance_torque_ -
-        _last_resistance_torque;
-
-    if (delta_t > 0.0f) {
-        resistance_torque_gradient_ =
-            resistance_delta / delta_t;
-    }
-
-    _last_resistance_torque =
-        resistance_torque_;
-
-    // Rider torque from crank dynamics.
     const float raw_rider_torque =
-        (config_.crank_inertia *
-         crank_accel_estimate_) -
+        (config_.crank_inertia * crank_accel_estimate_) -
         crank_motor_torque_;
 
     rider_torque_estimate_ =
@@ -409,8 +384,7 @@ void BikeController::update_rider_torques(float delta_t) {
             rider_torque_estimate_;
 
     rider_torque_estimate_ =
-        std::max(0.0f,
-                 rider_torque_estimate_);
+        std::max(0.0f, rider_torque_estimate_);
 
     const float rider_delta =
         rider_torque_estimate_ -
@@ -431,22 +405,6 @@ void BikeController::update_rider_torques(float delta_t) {
     rider_power_estimate_ =
         0.5f * rider_power +
         0.5f * rider_power_estimate_;
-}
-
-void BikeController::update_drive_torque(float delta_t) {
-    const float newVal = wheel_motor_torque_;
-
-    // Low pass filter
-    drive_torque_estimate_ = config_.torque_smoothing_alpha * newVal + (1.0f - config_.torque_smoothing_alpha) * drive_torque_estimate_;
-
-    float delta_Torque = drive_torque_estimate_ - _last_drive_torque;
-    if (delta_t > 0.0f) {
-        drive_torque_gradient_ = delta_Torque / delta_t;
-    }
-
-    _last_drive_torque = drive_torque_estimate_;
-
-    drive_power_estimate_ = drive_torque_estimate_ * wheel_speed_estimate_;
 }
 
 void BikeController::calculate_target_gear_ratio(void) {
