@@ -58,6 +58,9 @@ class BikeController : public ODriveIntf::BikeControllerIntf {
         float pedal_torque_gradient_threshold = 1.0f;  // Nm/s
 
         float crank_inertia = 0.05f;  // kg m^2, effective inertia referred to crank
+
+        float sync_kp = 0.0f;  // Nm / (rad/s)
+        float sync_ki = 0.0f;  // Nm / rad
     };
 
     struct TaskTimes {
@@ -83,7 +86,10 @@ class BikeController : public ODriveIntf::BikeControllerIntf {
 
     float input_output_gear_ratio_ = 1.0f;  // 1:1 at the start
     float target_input_output_gear_ratio_ = 1.0f;
-    float sync_speed_error_ = 0.0f;  // rad/s
+    float sync_speed_error_ = 0.0f;        // rad/s
+    float sync_integral_ = 0.0f;           // Nm
+    float sync_proportional_ = 0.0f;       // Nm
+    float virtual_torque_request_ = 0.0f;  // Nm, wheel-side virtual torque
 
     float wheel_speed_estimate_ = 0.0f;  // rad/s
     float wheel_accel_estimate_ = 0.0f;  // rad/s^2
@@ -106,6 +112,7 @@ class BikeController : public ODriveIntf::BikeControllerIntf {
     void update_crank_motor_torque(void);
     void update_wheel_motor_torque(void);
     void update_sync_speed_error(void);
+    void update_virtual_drivetrain_pi(float delta_t);
 
     float get_cadence_rpm() const;
     void update_values(void);

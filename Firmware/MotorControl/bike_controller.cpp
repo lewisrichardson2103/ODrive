@@ -91,6 +91,29 @@ void BikeController::update_sync_speed_error(void) {
         wheel_speed_estimate_;
 }
 
+void BikeController::update_virtual_drivetrain_pi(float delta_t) {
+    if (current_state_ != BIKE_STATE_CONTROL) {
+        sync_proportional_ = 0.0f;
+        virtual_torque_request_ = 0.0f;
+        return;
+    }
+
+    sync_proportional_ =
+        config_.sync_kp *
+        sync_speed_error_;
+
+    if (delta_t > 0.0f) {
+        sync_integral_ +=
+            config_.sync_ki *
+            sync_speed_error_ *
+            delta_t;
+    }
+
+    virtual_torque_request_ =
+        sync_proportional_ +
+        sync_integral_;
+}
+
 void BikeController::update_values(void) {
     const unsigned long now = micros();
 
@@ -113,6 +136,7 @@ void BikeController::update_values(void) {
 
     // 4. Virtual drivetrain measurements
     update_sync_speed_error();
+    update_virtual_drivetrain_pi(delta_t);
 
     // 5. Legacy transitional calculations
     target_resistance_torque_ =
@@ -515,4 +539,7 @@ void BikeController::update_bike_state(void) {
 
 void BikeController::reset_control_state(void) {
     sync_speed_error_ = 0.0f;
+    sync_integral_ = 0.0f;
+    sync_proportional_ = 0.0f;
+    virtual_torque_request_ = 0.0f;
 }

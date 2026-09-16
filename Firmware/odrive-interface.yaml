@@ -535,6 +535,13 @@ interfaces:
         doc: The torque output of the drive motor in Nm.
       drive_power_estimate:
         type: readonly float32
+      sync_proportional:
+        type: readonly float32
+      sync_integral:
+        type: readonly float32
+      virtual_torque_request:
+        type: readonly float32
+        doc: Nm, wheel-side virtual torque output from virtual gearbox pi controller
       config:
         c_is_class: False
         attributes:
@@ -586,6 +593,12 @@ interfaces:
             doc: A slew rate configuration for gear changes to smooth them out
           cadence_tolerance: float32
           pedal_torque_gradient_threshold: float32
+          sync_kp:
+            type: float32
+            doc: Virtual drivetrain proportional gain in Nm per rad/s.
+          sync_ki:
+            type: float32
+            doc: Virtual drivetrain integral gain.
       task_times:
         c_is_class: False
         attributes:
