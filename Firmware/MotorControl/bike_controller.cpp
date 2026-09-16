@@ -45,10 +45,8 @@ void BikeController::start_bike_controller(void) {
     pedalAxis_->controller_.config_.control_mode = ODriveIntf::ControllerIntf::CONTROL_MODE_TORQUE_CONTROL;
     pedalAxis_->controller_.config_.input_mode = ODriveIntf::ControllerIntf::INPUT_MODE_PASSTHROUGH;
 
-    driveAxis_->controller_.config_.control_mode = ODriveIntf::ControllerIntf::CONTROL_MODE_VELOCITY_CONTROL;
+    driveAxis_->controller_.config_.control_mode = ODriveIntf::ControllerIntf::CONTROL_MODE_TORQUE_CONTROL;
     driveAxis_->controller_.config_.input_mode = ODriveIntf::ControllerIntf::INPUT_MODE_PASSTHROUGH;
-    driveAxis_->controller_.config_.vel_gain = 0.005f;             // Tune these
-    driveAxis_->controller_.config_.vel_integrator_gain = 0.025f;  // Tune these
 }
 
 void BikeController::update_measurements(float delta_t) {
@@ -150,7 +148,7 @@ void BikeController::run_control_loop(void) {
                 pedalAxis_->requested_state_ = ODriveIntf::AxisIntf::AXIS_STATE_CLOSED_LOOP_CONTROL;
                 pedalAxis_->controller_.input_torque_ = 0.0;
                 driveAxis_->requested_state_ = ODriveIntf::AxisIntf::AXIS_STATE_CLOSED_LOOP_CONTROL;
-                driveAxis_->controller_.input_vel_ = (target_wheel_speed_ * config_.gear_ratio_drive) / TWO_PI;
+                driveAxis_->controller_.input_torque_ = 0.0f;
                 requested_state_ = BIKE_STATE_CONTROL;
             } else {
             }
@@ -164,12 +162,13 @@ void BikeController::run_control_loop(void) {
                 pedalAxis_->controller_.input_torque_ = 0.0;
                 pedalAxis_->requested_state_ = ODriveIntf::AxisIntf::AXIS_STATE_IDLE;
 
+                driveAxis_->controller_.input_torque_ = 0.0f;
                 driveAxis_->requested_state_ = ODriveIntf::AxisIntf::AXIS_STATE_IDLE;
                 requested_state_ = BIKE_STATE_IDLE;
             } else {
                 // We want to set the targets
                 pedalAxis_->controller_.input_torque_ = (target_resistance_torque_ / config_.gear_ratio_pedal);
-                driveAxis_->controller_.input_vel_ = (target_wheel_speed_ * config_.gear_ratio_drive) / TWO_PI;
+                driveAxis_->controller_.input_torque_ = 0.0f;
             }
         } break;
 
