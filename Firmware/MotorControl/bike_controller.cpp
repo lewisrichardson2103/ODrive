@@ -119,7 +119,7 @@ void BikeController::run_control_loop(void) {
                 pedalAxis_->requested_state_ = ODriveIntf::AxisIntf::AXIS_STATE_CLOSED_LOOP_CONTROL;
                 pedalAxis_->controller_.input_torque_ = 0.0;
                 driveAxis_->requested_state_ = ODriveIntf::AxisIntf::AXIS_STATE_CLOSED_LOOP_CONTROL;
-                driveAxis_->controller_.input_vel_ = (target_wheel_speed_ * config_.gear_ratio_drive);
+                driveAxis_->controller_.input_vel_ = (target_wheel_speed_ * config_.gear_ratio_drive) / TWO_PI;
                 requested_state_ = BIKE_STATE_CONTROL;
             } else {
             }
@@ -138,7 +138,7 @@ void BikeController::run_control_loop(void) {
             } else {
                 // We want to set the targets
                 pedalAxis_->controller_.input_torque_ = (target_resistance_torque_ / config_.gear_ratio_pedal);
-                driveAxis_->controller_.input_vel_ = (target_wheel_speed_ * config_.gear_ratio_drive);
+                driveAxis_->controller_.input_vel_ = (target_wheel_speed_ * config_.gear_ratio_drive) / TWO_PI;
             }
         } break;
 
@@ -273,7 +273,7 @@ void BikeController::calculate_input_output_gear_ratio(void) {
         case ODriveIntf::BikeControllerIntf::BikeMode::BIKE_MODE_AUTO_CADENCE: {
             float cadenceDelta = fabs(get_cadence_rpm() - config_.target_cadence);
             if (cadenceDelta > config_.cadence_tolerance) {
-                float newGearRatio = wheel_speed_estimate_ / config_.target_cadence;
+                float newGearRatio = (wheel_speed_estimate_ * RAD_PER_SEC_TO_RPM) / config_.target_cadence;
                 input_output_gear_ratio_ = std::clamp(newGearRatio, config_.min_i_o_gear_ratio, config_.max_i_o_gear_ratio);
 
                 if (input_output_gear_ratio_ < 1.0f || input_output_gear_ratio_ > 5.0f) {
