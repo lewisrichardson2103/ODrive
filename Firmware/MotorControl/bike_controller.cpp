@@ -64,9 +64,7 @@ void BikeController::update_crank_motor_torque(void) {
         pedalAxis_->motor_.config_.torque_constant *
         pedalAxis_->motor_.current_control_.Iq_measured_;
 
-    crank_motor_torque_ =
-        abs(motor_torque) *
-        config_.gear_ratio_pedal;
+    crank_motor_torque_ = motor_torque * config_.gear_ratio_pedal;
 }
 
 void BikeController::update_wheel_motor_torque(void) {
@@ -255,30 +253,63 @@ void BikeController::update_wheel_speed(float delta_t) {
 }
 
 void BikeController::update_rider_torques(float delta_t) {
-    float newVal = crank_motor_torque_;
+    // Positive resistance magnitude for legacy telemetry/control.
+    const float raw_resistance_torque =
+        std::max(0.0f, -crank_motor_torque_);
 
-    // Low pass filter
-    resistance_torque_ = config_.torque_smoothing_alpha * newVal + (1.0f - config_.torque_smoothing_alpha) * resistance_torque_;
+    resistance_torque_ =
+        config_.torque_smoothing_alpha *
+            raw_resistance_torque +
+        (1.0f - config_.torque_smoothing_alpha) *
+            resistance_torque_;
 
-    float delta_Torque = resistance_torque_ - _last_resistance_torque;
+    const float resistance_delta =
+        resistance_torque_ -
+        _last_resistance_torque;
+
     if (delta_t > 0.0f) {
-        resistance_torque_gradient_ = delta_Torque / delta_t;
+        resistance_torque_gradient_ =
+            resistance_delta / delta_t;
     }
-    _last_resistance_torque = resistance_torque_;
 
-    rider_torque_estimate_ = resistance_torque_ + (0.05f * crank_accel_estimate_);
+    _last_resistance_torque =
+        resistance_torque_;
 
-    delta_Torque = rider_torque_estimate_ - last_rider_torque;
+    // Rider torque from crank dynamics.
+    const float raw_rider_torque =
+        (config_.crank_inertia *
+         crank_accel_estimate_) -
+        crank_motor_torque_;
+
+    rider_torque_estimate_ =
+        config_.torque_smoothing_alpha *
+            raw_rider_torque +
+        (1.0f - config_.torque_smoothing_alpha) *
+            rider_torque_estimate_;
+
+    rider_torque_estimate_ =
+        std::max(0.0f,
+                 rider_torque_estimate_);
+
+    const float rider_delta =
+        rider_torque_estimate_ -
+        last_rider_torque;
+
     if (delta_t > 0.0f) {
-        rider_torque_gradient_ = delta_Torque / delta_t;
+        rider_torque_gradient_ =
+            rider_delta / delta_t;
     }
 
-    last_rider_torque = rider_torque_estimate_;
+    last_rider_torque =
+        rider_torque_estimate_;
 
-    // Smoothed rider power
-    const float rider_power = rider_torque_estimate_ * crank_speed_estimate_;
+    const float rider_power =
+        rider_torque_estimate_ *
+        crank_speed_estimate_;
 
-    rider_power_estimate_ = 0.5f * rider_power + 0.5f * rider_power_estimate_;
+    rider_power_estimate_ =
+        0.5f * rider_power +
+        0.5f * rider_power_estimate_;
 }
 
 void BikeController::update_drive_torque(float delta_t) {

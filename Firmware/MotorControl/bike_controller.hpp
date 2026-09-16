@@ -52,6 +52,8 @@ class BikeController : public ODriveIntf::BikeControllerIntf {
         float min_i_o_gear_ratio = 1.0f;
         float cadence_tolerance = 5.0f;
         float pedal_torque_gradient_threshold = 1.0f;  // Nm/s
+
+        float crank_inertia = 0.05f;  // kg m^2, effective inertia referred to crank
     };
 
     struct TaskTimes {
