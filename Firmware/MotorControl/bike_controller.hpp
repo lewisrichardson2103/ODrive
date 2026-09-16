@@ -43,7 +43,7 @@ class BikeController : public ODriveIntf::BikeControllerIntf {
         float fixed_gear_7 = 4.0f;
 
         float min_cadence = 5.0f;
-        float gear_ratio_pedal = 18.0f;
+        float gear_ratio_pedal = 1.0f;
         float gear_ratio_drive = 1.0f;
         float cadence_smoothing_alpha = 1.0f;
         float wheel_speed_smoothing_alpha = 1.0f;
