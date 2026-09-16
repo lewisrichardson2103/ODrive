@@ -64,8 +64,10 @@ class BikeController : public ODriveIntf::BikeControllerIntf {
     ODriveIntf::BikeControllerIntf::BikeState requested_state_ = ODriveIntf::BikeControllerIntf::BikeState::BIKE_STATE_CALIBRATION;
 
     uint32_t currentGear_ = 0;
-    float cadence_estimate_ = 0.0f;
-    float cadence_accel_estimate_ = 0.0f;
+    float crank_speed_estimate_ = 0.0f;  // rad/s
+    float crank_accel_estimate_ = 0.0f;  // rad/s^2
+    float cadence_estimate_ = 0.0f;      // rpm
+
     float resistance_torque_ = 0.0f;
     float resistance_torque_gradient_ = 0.0f;
     float rider_torque_estimate_ = 0.0f;
@@ -75,8 +77,9 @@ class BikeController : public ODriveIntf::BikeControllerIntf {
 
     float input_output_gear_ratio_ = 1.0f;  // 1:1 at the start
 
-    float wheel_speed_estimate_ = 0.0f;
-    float wheel_accel_estimate_ = 0.0f;
+    float wheel_speed_estimate_ = 0.0f;  // rad/s
+    float wheel_accel_estimate_ = 0.0f;  // rad/s^2
+
     float target_wheel_speed_ = 0.0f;
     float drive_torque_estimate_ = 0.0f;
     float drive_torque_gradient_ = 0.0f;
@@ -90,6 +93,8 @@ class BikeController : public ODriveIntf::BikeControllerIntf {
 
     void update_values(void);
     void update_cadence(float delta_t);
+    float get_cadence_rpm() const;
+
     void update_rider_torques(float delta_t);
     void calculate_input_output_gear_ratio(void);
     void update_wheel_speed(float delta_t);
@@ -101,7 +106,7 @@ class BikeController : public ODriveIntf::BikeControllerIntf {
     bool should_freewheel(void);
 
    private:
-    float _last_cadence_estimate = 0.0f;
+    float _last_crank_speed_estimate = 0.0f;
     float _last_resistance_torque = 0.0f;
     float last_rider_torque = 0.0f;
     float _last_drive_torque = 0.0f;

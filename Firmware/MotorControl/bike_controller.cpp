@@ -2,9 +2,10 @@
 
 #include "utils.hpp"
 
-#define RPS_TO_RPM 60.0f
-#define MICRO_TO_SEC 0.000001f
-#define RPM_PER_SEC_TO_RAD_PER_SEC 3.14159f / 3.0f
+static constexpr float TWO_PI = 6.28318530718f;
+static constexpr float TURNS_PER_SEC_TO_RAD_PER_SEC = TWO_PI;
+static constexpr float RAD_PER_SEC_TO_RPM = 60.0f / TWO_PI;
+static constexpr float MICRO_TO_SEC = 1.0e-6f;
 
 BikeController::BikeController() {
 }
@@ -68,7 +69,7 @@ void BikeController::update_values(void) {
     calculate_input_output_gear_ratio();
 
     // Update target wheel speed from cadence and gear ratio
-    target_wheel_speed_ = cadence_estimate_ * input_output_gear_ratio_;
+    target_wheel_speed_ = crank_speed_estimate_ * input_output_gear_ratio_;
 
     // Update target pedal resistance
     target_resistance_torque_ = (drive_torque_estimate_ * input_output_gear_ratio_) * -1.0f;
@@ -114,7 +115,7 @@ void BikeController::run_control_loop(void) {
 
         case BIKE_STATE_IDLE: {
             // In this state we just look for movement of the pedals
-            if (cadence_estimate_ >= config_.min_cadence) {
+            if (get_cadence_rpm() >= config_.min_cadence) {
                 pedalAxis_->requested_state_ = ODriveIntf::AxisIntf::AXIS_STATE_CLOSED_LOOP_CONTROL;
                 pedalAxis_->controller_.input_torque_ = 0.0;
                 driveAxis_->requested_state_ = ODriveIntf::AxisIntf::AXIS_STATE_CLOSED_LOOP_CONTROL;
@@ -154,40 +155,69 @@ void BikeController::run_control_loop(void) {
     update_bike_state();
 }
 
-void BikeController::update_cadence(float delta_t) {
-    std::optional<float> maybe_vel = pedalAxis_->encoder_.vel_estimate_.any();
-    if (maybe_vel.has_value()) {
-        float vel_raw = maybe_vel.value();  // in rad/s
-        float vel_raw_rpm = vel_raw * RPS_TO_RPM;
+float BikeController::get_cadence_rpm() const {
+    return crank_speed_estimate_ * RAD_PER_SEC_TO_RPM;
+}
 
-        // The motor is spinning faster than the motor output by a fixed gear ratio
-        float newVal = vel_raw_rpm / config_.gear_ratio_pedal;
+void BikeController::update_cadence(float delta_t) {
+    std::optional<float> maybe_vel =
+        pedalAxis_->encoder_.vel_estimate_.any();
+
+    if (maybe_vel.has_value()) {
+        // ODrive encoder velocity is in turns/s.
+        const float motor_speed_rad_s =
+            maybe_vel.value() * TURNS_PER_SEC_TO_RAD_PER_SEC;
+
+        // Convert motor speed to crank speed through the fixed physical gearbox.
+        float newVal =
+            motor_speed_rad_s / config_.gear_ratio_pedal;
+
         newVal = newVal < 0.0f ? 0.0f : newVal;
 
-        // Low Pass Filter
-        cadence_estimate_ = config_.cadence_smoothing_alpha * newVal + (1.0f - config_.cadence_smoothing_alpha) * cadence_estimate_;
+        crank_speed_estimate_ =
+            config_.cadence_smoothing_alpha * newVal +
+            (1.0f - config_.cadence_smoothing_alpha) *
+                crank_speed_estimate_;
 
-        float delta_Rpm = cadence_estimate_ - _last_cadence_estimate;
-        cadence_accel_estimate_ = delta_Rpm * delta_t;
-        _last_cadence_estimate = cadence_estimate_;
+        if (delta_t > 0.0f) {
+            crank_accel_estimate_ =
+                (crank_speed_estimate_ -
+                 _last_crank_speed_estimate) /
+                delta_t;
+        }
+
+        _last_crank_speed_estimate = crank_speed_estimate_;
+        cadence_estimate_ = get_cadence_rpm();
     }
 }
 
 void BikeController::update_wheel_speed(float delta_t) {
-    std::optional<float> maybe_vel = driveAxis_->encoder_.vel_estimate_.any();
+    std::optional<float> maybe_vel =
+        driveAxis_->encoder_.vel_estimate_.any();
+
     if (maybe_vel.has_value()) {
-        float vel_raw = maybe_vel.value();  // in rad/s
-        float vel_raw_rpm = vel_raw * RPS_TO_RPM;
+        // ODrive encoder velocity is in turns/s.
+        const float motor_speed_rad_s =
+            maybe_vel.value() * TURNS_PER_SEC_TO_RAD_PER_SEC;
 
-        // The motor is spinning faster than the motor output by a fixed gear ratio
-        float newVal = vel_raw_rpm / config_.gear_ratio_drive;
+        // Convert motor speed to wheel speed through the fixed physical gearbox.
+        const float newVal =
+            motor_speed_rad_s / config_.gear_ratio_drive;
 
-        // Low Pass Filter
-        wheel_speed_estimate_ = config_.cadence_smoothing_alpha * newVal + (1.0f - config_.cadence_smoothing_alpha) * wheel_speed_estimate_;
+        wheel_speed_estimate_ =
+            config_.wheel_speed_smoothing_alpha * newVal +
+            (1.0f - config_.wheel_speed_smoothing_alpha) *
+                wheel_speed_estimate_;
 
-        float delta_Rpm = wheel_speed_estimate_ - _last_wheel_speed_estimate;
-        wheel_accel_estimate_ = delta_Rpm * delta_t;
-        _last_wheel_speed_estimate = wheel_speed_estimate_;
+        if (delta_t > 0.0f) {
+            wheel_accel_estimate_ =
+                (wheel_speed_estimate_ -
+                 _last_wheel_speed_estimate) /
+                delta_t;
+        }
+
+        _last_wheel_speed_estimate =
+            wheel_speed_estimate_;
     }
 }
 
@@ -199,16 +229,24 @@ void BikeController::update_rider_torques(float delta_t) {
     resistance_torque_ = config_.torque_smoothing_alpha * newVal + (1.0f - config_.torque_smoothing_alpha) * resistance_torque_;
 
     float delta_Torque = resistance_torque_ - _last_resistance_torque;
-    resistance_torque_gradient_ = delta_Torque * delta_t;
+    if (delta_t > 0.0f) {
+        resistance_torque_gradient_ = delta_Torque / delta_t;
+    }
     _last_resistance_torque = resistance_torque_;
 
-    rider_torque_estimate_ = resistance_torque_ + (0.05f * (cadence_accel_estimate_ * RPM_PER_SEC_TO_RAD_PER_SEC));
+    rider_torque_estimate_ = resistance_torque_ + (0.05f * crank_accel_estimate_);
+
     delta_Torque = rider_torque_estimate_ - last_rider_torque;
-    rider_torque_gradient_ = delta_Torque * delta_t;
+    if (delta_t > 0.0f) {
+        rider_torque_gradient_ = delta_Torque / delta_t;
+    }
+
     last_rider_torque = rider_torque_estimate_;
 
     // Smoothed rider power
-    rider_power_estimate_ = (0.5f * (rider_torque_estimate_ * cadence_estimate_) + ((1.0f - 0.5f) * rider_power_estimate_));
+    const float rider_power = rider_torque_estimate_ * crank_speed_estimate_;
+
+    rider_power_estimate_ = 0.5f * rider_power + 0.5f * rider_power_estimate_;
 }
 
 void BikeController::update_drive_torque(float delta_t) {
@@ -221,7 +259,10 @@ void BikeController::update_drive_torque(float delta_t) {
     drive_torque_estimate_ = config_.torque_smoothing_alpha * newVal + (1.0f - config_.torque_smoothing_alpha) * drive_torque_estimate_;
 
     float delta_Torque = drive_torque_estimate_ - _last_drive_torque;
-    drive_torque_gradient_ = delta_Torque * delta_t;
+    if (delta_t > 0.0f) {
+        drive_torque_gradient_ = delta_Torque / delta_t;
+    }
+
     _last_drive_torque = drive_torque_estimate_;
 
     drive_power_estimate_ = drive_torque_estimate_ * wheel_speed_estimate_;
@@ -230,7 +271,7 @@ void BikeController::update_drive_torque(float delta_t) {
 void BikeController::calculate_input_output_gear_ratio(void) {
     switch (mode_) {
         case ODriveIntf::BikeControllerIntf::BikeMode::BIKE_MODE_AUTO_CADENCE: {
-            float cadenceDelta = fabs(cadence_estimate_ - config_.target_cadence);
+            float cadenceDelta = fabs(get_cadence_rpm() - config_.target_cadence);
             if (cadenceDelta > config_.cadence_tolerance) {
                 float newGearRatio = wheel_speed_estimate_ / config_.target_cadence;
                 input_output_gear_ratio_ = std::clamp(newGearRatio, config_.min_i_o_gear_ratio, config_.max_i_o_gear_ratio);
@@ -263,17 +304,17 @@ void BikeController::calculate_input_output_gear_ratio(void) {
 bool BikeController::should_freewheel(void) {
     return false;
     // We arent pedaling
-    if ((cadence_estimate_ < config_.min_cadence)) {
+    if ((get_cadence_rpm() < config_.min_cadence)) {
         return true;
     }
 
     // Look for coasting
-    if ((cadence_estimate_ * input_output_gear_ratio_) < wheel_speed_estimate_) {
+    if ((crank_speed_estimate_ * input_output_gear_ratio_) < wheel_speed_estimate_) {
         // Is the rider struggling or just reducing cadence
-        if ((cadence_accel_estimate_ < 0.0f) && (rider_torque_gradient_ >= config_.pedal_torque_gradient_threshold)) {
+        if ((crank_accel_estimate_ < 0.0f) && (rider_torque_gradient_ >= config_.pedal_torque_gradient_threshold)) {
             // Rider cadence droping and they are having to input more torque, we need to review the gear ratio
             return false;
-        } else if ((cadence_accel_estimate_ < 0.0f) && (rider_torque_gradient_ <= 0.0f)) {
+        } else if ((crank_accel_estimate_ < 0.0f) && (rider_torque_gradient_ <= 0.0f)) {
             // Rider cadence dropping and they are applying less or the same torque, probably just want to coast
             return true;
         } else {
