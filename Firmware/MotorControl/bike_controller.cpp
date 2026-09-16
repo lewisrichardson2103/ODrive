@@ -81,6 +81,16 @@ void BikeController::update_wheel_motor_torque(void) {
         config_.gear_ratio_drive;
 }
 
+void BikeController::update_sync_speed_error(void) {
+    target_wheel_speed_ =
+        input_output_gear_ratio_ *
+        crank_speed_estimate_;
+
+    sync_speed_error_ =
+        target_wheel_speed_ -
+        wheel_speed_estimate_;
+}
+
 void BikeController::update_values(void) {
     const unsigned long now = micros();
 
@@ -101,10 +111,10 @@ void BikeController::update_values(void) {
     calculate_target_gear_ratio();
     update_active_gear_ratio(delta_t);
 
-    target_wheel_speed_ =
-        crank_speed_estimate_ *
-        input_output_gear_ratio_;
+    // 4. Virtual drivetrain measurements
+    update_sync_speed_error();
 
+    // 5. Legacy transitional calculations
     target_resistance_torque_ =
         drive_torque_estimate_ *
         input_output_gear_ratio_ *
@@ -504,5 +514,5 @@ void BikeController::update_bike_state(void) {
 }
 
 void BikeController::reset_control_state(void) {
-    // Empty for now.
+    sync_speed_error_ = 0.0f;
 }

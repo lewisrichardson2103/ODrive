@@ -83,6 +83,7 @@ class BikeController : public ODriveIntf::BikeControllerIntf {
 
     float input_output_gear_ratio_ = 1.0f;  // 1:1 at the start
     float target_input_output_gear_ratio_ = 1.0f;
+    float sync_speed_error_ = 0.0f;  // rad/s
 
     float wheel_speed_estimate_ = 0.0f;  // rad/s
     float wheel_accel_estimate_ = 0.0f;  // rad/s^2
@@ -104,6 +105,7 @@ class BikeController : public ODriveIntf::BikeControllerIntf {
     void update_wheel_speed(float delta_t);
     void update_crank_motor_torque(void);
     void update_wheel_motor_torque(void);
+    void update_sync_speed_error(void);
 
     float get_cadence_rpm() const;
     void update_values(void);

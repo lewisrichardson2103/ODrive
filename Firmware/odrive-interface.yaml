@@ -504,6 +504,12 @@ interfaces:
         type: float32
       input_output_gear_ratio:
         type: float32
+      sync_speed_error:
+        type: float32
+        doc: |
+          Virtual drivetrain speed mismatch in rad/s.
+          Positive means the crank side is leading the wheel side.
+          Negative means the wheel side is overrunning the crank side.
       requested_state:
         type: BikeState
         brief: The user's commanded bike state
