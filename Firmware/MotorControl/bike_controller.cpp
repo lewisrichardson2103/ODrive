@@ -47,6 +47,12 @@ void BikeController::start_bike_controller(void) {
 
     driveAxis_->controller_.config_.control_mode = ODriveIntf::ControllerIntf::CONTROL_MODE_TORQUE_CONTROL;
     driveAxis_->controller_.config_.input_mode = ODriveIntf::ControllerIntf::INPUT_MODE_PASSTHROUGH;
+
+    target_input_output_gear_ratio_ =
+        get_fixed_gear(currentGear_);
+
+    input_output_gear_ratio_ =
+        target_input_output_gear_ratio_;
 }
 
 void BikeController::update_measurements(float delta_t) {
@@ -92,7 +98,8 @@ void BikeController::update_values(void) {
     update_drive_torque(delta_t);
 
     // 3. Existing control calculations
-    calculate_input_output_gear_ratio();
+    calculate_target_gear_ratio();
+    update_active_gear_ratio(delta_t);
 
     target_wheel_speed_ =
         crank_speed_estimate_ *
@@ -345,15 +352,15 @@ void BikeController::update_drive_torque(float delta_t) {
     drive_power_estimate_ = drive_torque_estimate_ * wheel_speed_estimate_;
 }
 
-void BikeController::calculate_input_output_gear_ratio(void) {
+void BikeController::calculate_target_gear_ratio(void) {
     switch (mode_) {
         case ODriveIntf::BikeControllerIntf::BikeMode::BIKE_MODE_AUTO_CADENCE: {
             float cadenceDelta = fabs(get_cadence_rpm() - config_.target_cadence);
             if (cadenceDelta > config_.cadence_tolerance) {
                 float newGearRatio = (wheel_speed_estimate_ * RAD_PER_SEC_TO_RPM) / config_.target_cadence;
-                input_output_gear_ratio_ = std::clamp(newGearRatio, config_.min_i_o_gear_ratio, config_.max_i_o_gear_ratio);
+                target_input_output_gear_ratio_ = std::clamp(newGearRatio, config_.min_i_o_gear_ratio, config_.max_i_o_gear_ratio);
 
-                if (input_output_gear_ratio_ < 1.0f || input_output_gear_ratio_ > 5.0f) {
+                if (target_input_output_gear_ratio_ < 1.0f || target_input_output_gear_ratio_ > 5.0f) {
                     error_ = ERROR_CONTROLLER_FAILED;
                 }
             }
@@ -361,21 +368,48 @@ void BikeController::calculate_input_output_gear_ratio(void) {
         }
 
         case ODriveIntf::BikeControllerIntf::BikeMode::BIKE_MODE_MANUAL: {
-            input_output_gear_ratio_ = get_fixed_gear(currentGear_);
+            target_input_output_gear_ratio_ = get_fixed_gear(currentGear_);
             break;
         }
 
         case ODriveIntf::BikeControllerIntf::BikeMode::BIKE_MODE_AUTO_POWER: {
             float new_gear_ratio = config_.target_power / rider_power_estimate_;
-            input_output_gear_ratio_ = std::clamp(new_gear_ratio, config_.min_i_o_gear_ratio, config_.max_i_o_gear_ratio);
+            target_input_output_gear_ratio_ = std::clamp(new_gear_ratio, config_.min_i_o_gear_ratio, config_.max_i_o_gear_ratio);
             break;
         }
 
         default: {
-            input_output_gear_ratio_ = get_fixed_gear(currentGear_);
+            target_input_output_gear_ratio_ = get_fixed_gear(currentGear_);
             break;
         }
     }
+}
+
+void BikeController::update_active_gear_ratio(float delta_t) {
+    if (delta_t <= 0.0f) {
+        return;
+    }
+
+    const float max_change =
+        config_.max_gear_ratio_rate * delta_t;
+
+    const float difference =
+        target_input_output_gear_ratio_ -
+        input_output_gear_ratio_;
+
+    const float change =
+        std::clamp(
+            difference,
+            -max_change,
+            max_change);
+
+    input_output_gear_ratio_ += change;
+
+    input_output_gear_ratio_ =
+        std::clamp(
+            input_output_gear_ratio_,
+            config_.min_i_o_gear_ratio,
+            config_.max_i_o_gear_ratio);
 }
 
 bool BikeController::rider_active(void) const {

@@ -500,6 +500,10 @@ interfaces:
           AUTO_POWER will act like a CVT to keep the rider at a set power target.
       currentGear:
         type: uint32
+      target_input_output_gear_ratio:
+        type: float32
+      input_output_gear_ratio:
+        type: float32
       requested_state:
         type: BikeState
         brief: The user's commanded bike state
@@ -571,6 +575,9 @@ interfaces:
             doc: A low pass filter to smooth the values for torque read from the motors
           max_i_o_gear_ratio: float32
           min_i_o_gear_ratio: float32
+          max_gear_ratio_rate:
+            type: float32
+            doc: A slew rate configuration for gear changes to smooth them out
           cadence_tolerance: float32
           pedal_torque_gradient_threshold: float32
       task_times:

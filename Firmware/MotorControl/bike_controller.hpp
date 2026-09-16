@@ -52,6 +52,8 @@ class BikeController : public ODriveIntf::BikeControllerIntf {
         float torque_smoothing_alpha = 1.0f;
         float max_i_o_gear_ratio = 4.0f;
         float min_i_o_gear_ratio = 1.0f;
+        float max_gear_ratio_rate = 1.0f;  // ratio units per second
+
         float cadence_tolerance = 5.0f;
         float pedal_torque_gradient_threshold = 1.0f;  // Nm/s
 
@@ -80,6 +82,7 @@ class BikeController : public ODriveIntf::BikeControllerIntf {
     float target_resistance_torque_ = 0.0f;
 
     float input_output_gear_ratio_ = 1.0f;  // 1:1 at the start
+    float target_input_output_gear_ratio_ = 1.0f;
 
     float wheel_speed_estimate_ = 0.0f;  // rad/s
     float wheel_accel_estimate_ = 0.0f;  // rad/s^2
@@ -106,8 +109,10 @@ class BikeController : public ODriveIntf::BikeControllerIntf {
     void update_values(void);
 
     void update_rider_torques(float delta_t);
-    void calculate_input_output_gear_ratio(void);
     void update_drive_torque(float delta_t);
+
+    void calculate_target_gear_ratio(void);
+    void update_active_gear_ratio(float delta_t);
 
     void check_axis_states(void);
     void update_bike_state(void);
