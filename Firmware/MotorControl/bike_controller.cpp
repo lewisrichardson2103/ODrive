@@ -148,13 +148,6 @@ void BikeController::run_control_loop(void) {
             pedalAxis_->controller_.input_torque_ = 0.0f;
             driveAxis_->controller_.input_torque_ = 0.0f;
 
-            // Keep axes physically idle until the rider starts pedalling.
-            pedalAxis_->requested_state_ =
-                ODriveIntf::AxisIntf::AXIS_STATE_IDLE;
-
-            driveAxis_->requested_state_ =
-                ODriveIntf::AxisIntf::AXIS_STATE_IDLE;
-
             if (rider_active()) {
                 pedalAxis_->controller_.input_torque_ = 0.0f;
                 driveAxis_->controller_.input_torque_ = 0.0f;
@@ -166,6 +159,13 @@ void BikeController::run_control_loop(void) {
                     ODriveIntf::AxisIntf::AXIS_STATE_CLOSED_LOOP_CONTROL;
 
                 requested_state_ = BIKE_STATE_CONTROL;
+            } else {
+                // Keep axes physically idle until the rider starts pedalling.
+                pedalAxis_->requested_state_ =
+                    ODriveIntf::AxisIntf::AXIS_STATE_IDLE;
+
+                driveAxis_->requested_state_ =
+                    ODriveIntf::AxisIntf::AXIS_STATE_IDLE;
             }
         } break;
 
