@@ -104,7 +104,10 @@ void BikeController::update_virtual_drivetrain_pi(float delta_t) {
 
     if (delta_t > 0.0f) {
         const float candidate_integral =
-            sync_ki_ * sync_speed_error_ * delta_t;
+            sync_integral_ +
+            (sync_ki_ *
+             sync_speed_error_ *
+             delta_t);
 
         const float candidate_torque =
             sync_proportional_ +
@@ -178,12 +181,6 @@ void BikeController::update_virtual_torque_commands(void) {
         return;
     }
 
-    const float assist_ratio =
-        std::max(0.0f, config_.assist_ratio);
-
-    human_fraction_ =
-        1.0f / (1.0f + assist_ratio);
-
     wheel_torque_command_ =
         virtual_torque_limited_;
 
@@ -200,17 +197,11 @@ void BikeController::update_virtual_drivetrain_gains(void) {
     const float wheel_inertia =
         std::max(config_.wheel_inertia, 0.0001f);
 
-    const float assist_ratio =
-        std::max(0.0f, config_.assist_ratio);
-
-    const float human_fraction =
-        1.0f / (1.0f + assist_ratio);
-
     const float gear_ratio =
         std::max(input_output_gear_ratio_, 0.0001f);
 
     drivetrain_inertia_gain_ =
-        (human_fraction *
+        (human_fraction_ *
          gear_ratio *
          gear_ratio /
          crank_inertia) +
