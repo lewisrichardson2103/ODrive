@@ -553,6 +553,11 @@ interfaces:
         doc: |
           Fraction of virtual drivetrain reaction supplied by the rider.
           1 = unassisted, 0.5 = equal rider/battery contribution.
+      sync_kp:
+        type: readonly float32
+      sync_ki:
+        type: readonly float32
+      drivetrain_inertia_gain: readonly float32
       config:
         c_is_class: False
         attributes:
@@ -604,12 +609,14 @@ interfaces:
             doc: A slew rate configuration for gear changes to smooth them out
           cadence_tolerance: float32
           pedal_torque_gradient_threshold: float32
-          sync_kp:
+          crank_inertia: float32
+          wheel_inertia: float32
+          sync_natural_frequency:
             type: float32
-            doc: Virtual drivetrain proportional gain in Nm per rad/s.
-          sync_ki:
+            doc: Virtual drivetrain closed-loop natural frequency in rad/s.
+          sync_damping_ratio:
             type: float32
-            doc: Virtual drivetrain integral gain.
+            doc: Virtual drivetrain closed-loop damping ratio.
           assist_ratio:
             type: float32
             doc: |
