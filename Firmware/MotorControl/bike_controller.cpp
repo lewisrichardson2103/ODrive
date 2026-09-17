@@ -99,15 +99,12 @@ void BikeController::update_virtual_drivetrain_pi(float delta_t) {
     }
 
     sync_proportional_ =
-        config_.sync_kp *
+        sync_kp_ *
         sync_speed_error_;
 
     if (delta_t > 0.0f) {
         const float candidate_integral =
-            sync_integral_ +
-            (config_.sync_ki *
-             sync_speed_error_ *
-             delta_t);
+            sync_ki_ * sync_speed_error_ * delta_t;
 
         const float candidate_torque =
             sync_proportional_ +
@@ -131,6 +128,14 @@ void BikeController::update_virtual_drivetrain_pi(float delta_t) {
     virtual_torque_request_ =
         sync_proportional_ +
         sync_integral_;
+}
+
+void BikeController::update_assistance_state(void) {
+    const float assist_ratio =
+        std::max(0.0f, config_.assist_ratio);
+
+    human_fraction_ =
+        1.0f / (1.0f + assist_ratio);
 }
 
 void BikeController::update_virtual_torque_authority(void) {
@@ -188,6 +193,51 @@ void BikeController::update_virtual_torque_commands(void) {
         virtual_torque_limited_;
 }
 
+void BikeController::update_virtual_drivetrain_gains(void) {
+    const float crank_inertia =
+        std::max(config_.crank_inertia, 0.0001f);
+
+    const float wheel_inertia =
+        std::max(config_.wheel_inertia, 0.0001f);
+
+    const float assist_ratio =
+        std::max(0.0f, config_.assist_ratio);
+
+    const float human_fraction =
+        1.0f / (1.0f + assist_ratio);
+
+    const float gear_ratio =
+        std::max(input_output_gear_ratio_, 0.0001f);
+
+    drivetrain_inertia_gain_ =
+        (human_fraction *
+         gear_ratio *
+         gear_ratio /
+         crank_inertia) +
+        (1.0f / wheel_inertia);
+
+    const float natural_frequency =
+        std::max(
+            0.0f,
+            config_.sync_natural_frequency);
+
+    const float damping_ratio =
+        std::max(
+            0.0f,
+            config_.sync_damping_ratio);
+
+    sync_kp_ =
+        (2.0f *
+         damping_ratio *
+         natural_frequency) /
+        drivetrain_inertia_gain_;
+
+    sync_ki_ =
+        (natural_frequency *
+         natural_frequency) /
+        drivetrain_inertia_gain_;
+}
+
 void BikeController::update_values(void) {
     const unsigned long now = micros();
 
@@ -208,6 +258,8 @@ void BikeController::update_values(void) {
     update_active_gear_ratio(delta_t);
 
     // 4. Virtual drivetrain measurements
+    update_assistance_state();
+    update_virtual_drivetrain_gains();
     update_sync_speed_error();
     update_virtual_torque_authority();
     update_virtual_drivetrain_pi(delta_t);

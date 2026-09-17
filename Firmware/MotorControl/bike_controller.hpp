@@ -58,9 +58,10 @@ class BikeController : public ODriveIntf::BikeControllerIntf {
         float pedal_torque_gradient_threshold = 1.0f;  // Nm/s
 
         float crank_inertia = 0.05f;  // kg m^2, effective inertia referred to crank
+        float wheel_inertia = 1.0f;   // kg m^2, effective inertia referred to wheel
 
-        float sync_kp = 0.0f;  // Nm / (rad/s)
-        float sync_ki = 0.0f;  // Nm / rad
+        float sync_natural_frequency = 5.0f;  // rad/s
+        float sync_damping_ratio = 1.0f;
 
         float assist_ratio = 0.0f;  // 0 = no assist, 1 = 100% additional assist
     };
@@ -86,6 +87,9 @@ class BikeController : public ODriveIntf::BikeControllerIntf {
     float input_output_gear_ratio_ = 1.0f;  // 1:1 at the start
     float target_input_output_gear_ratio_ = 1.0f;
 
+    float sync_kp_ = 0.0f;
+    float sync_ki_ = 0.0f;
+    float drivetrain_inertia_gain_ = 0.0f;
     float sync_speed_error_ = 0.0f;        // rad/s
     float sync_integral_ = 0.0f;           // Nm
     float sync_proportional_ = 0.0f;       // Nm
@@ -119,7 +123,10 @@ class BikeController : public ODriveIntf::BikeControllerIntf {
     void update_virtual_torque_authority(void);
     void limit_virtual_torque(void);
 
+    void update_assistance_state(void);
+
     void update_virtual_torque_commands(void);
+    void update_virtual_drivetrain_gains(void);
 
     float get_cadence_rpm() const;
     void update_values(void);
