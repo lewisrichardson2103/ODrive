@@ -368,13 +368,15 @@ void BikeController::run_control_loop(void) {
             const bool pedal_ready =
                 pedalAxis_->motor_.is_calibrated_ &&
                 pedalAxis_->encoder_.is_ready_ &&
-                pedalAxis_->error_ == ODriveIntf::AxisIntf::ERROR_NONE;
+                pedalAxis_->error_ == ODriveIntf::AxisIntf::ERROR_NONE &&
+                pedalAxis_->current_state_ == ODriveIntf::AxisIntf::AXIS_STATE_IDLE;
 
 #ifndef BIKE_SINGLE_MOTOR_TEST
             const bool drive_ready =
                 driveAxis_->motor_.is_calibrated_ &&
                 driveAxis_->encoder_.is_ready_ &&
-                driveAxis_->error_ == ODriveIntf::AxisIntf::ERROR_NONE;
+                driveAxis_->error_ == ODriveIntf::AxisIntf::ERROR_NONE &&
+                driveAxis_->current_state_ == ODriveIntf::AxisIntf::AXIS_STATE_IDLE;
 
             const bool calibration_done =
                 pedal_ready &&
