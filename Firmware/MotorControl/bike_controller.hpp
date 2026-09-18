@@ -64,6 +64,8 @@ class BikeController : public ODriveIntf::BikeControllerIntf {
         float sync_damping_ratio = 1.0f;
 
         float assist_ratio = 0.0f;  // 0 = no assist, 1 = 100% additional assist
+
+        float simulated_wheel_load = 1.0f;  // Nm - Only used in single motor testing
     };
 
     struct TaskTimes {
@@ -115,6 +117,7 @@ class BikeController : public ODriveIntf::BikeControllerIntf {
 
     void update_measurements(float delta_t);
     void update_crank_speed(float delta_t);
+    void update_simulated_wheel(float delta_t);
     void update_wheel_speed(float delta_t);
     void update_crank_motor_torque(void);
     void update_wheel_motor_torque(void);

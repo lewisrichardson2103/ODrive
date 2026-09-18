@@ -2,6 +2,8 @@
 
 #include "utils.hpp"
 
+// #define BIKE_SINGLE_MOTOR_TEST
+
 static constexpr float TWO_PI = 6.28318530718f;
 static constexpr float TURNS_PER_SEC_TO_RAD_PER_SEC = TWO_PI;
 static constexpr float RAD_PER_SEC_TO_RPM = 60.0f / TWO_PI;
@@ -13,6 +15,10 @@ BikeController::BikeController() {
 void BikeController::SetAxes(Axis* pedalAxis, Axis* driveAxis) {
     pedalAxis_ = pedalAxis;
     driveAxis_ = driveAxis;
+
+#ifdef BIKE_SINGLE_MOTOR_TEST
+    driveAxis = nullptr;
+#endif
 }
 
 void BikeController::start_bike_controller(void) {
@@ -26,27 +32,32 @@ void BikeController::start_bike_controller(void) {
     pedalAxis_->motor_.config_.torque_constant = 0.05907f;  // 8.27/kv = 8.27/140
     pedalAxis_->motor_.config_.motor_type = ODriveIntf::MotorIntf::MOTOR_TYPE_HIGH_CURRENT;
 
+#ifndef BIKE_SINGLE_MOTOR_TEST
     driveAxis_->motor_.config_.current_lim = 5.0f;          // Amps
     driveAxis_->controller_.config_.vel_limit = 25.0f;      // turns/s
     driveAxis_->motor_.config_.calibration_current = 2.0f;  // Amps
     driveAxis_->motor_.config_.pole_pairs = 7.0f;
     driveAxis_->motor_.config_.torque_constant = 0.05907f;  // 8.27/kv = 8.27/140
     driveAxis_->motor_.config_.motor_type = ODriveIntf::MotorIntf::MOTOR_TYPE_HIGH_CURRENT;
+#endif
 
     // Encoder Config
     pedalAxis_->encoder_.config_.mode = ODriveIntf::EncoderIntf::MODE_INCREMENTAL;
     pedalAxis_->encoder_.config_.cpr = 8192;
 
+#ifndef BIKE_SINGLE_MOTOR_TEST
     driveAxis_->encoder_.config_.mode = ODriveIntf::EncoderIntf::MODE_INCREMENTAL;
     driveAxis_->encoder_.config_.cpr = 8192;
-
+#endif
     // Motor / Control Config
 
     pedalAxis_->controller_.config_.control_mode = ODriveIntf::ControllerIntf::CONTROL_MODE_TORQUE_CONTROL;
     pedalAxis_->controller_.config_.input_mode = ODriveIntf::ControllerIntf::INPUT_MODE_PASSTHROUGH;
 
+#ifndef BIKE_SINGLE_MOTOR_TEST
     driveAxis_->controller_.config_.control_mode = ODriveIntf::ControllerIntf::CONTROL_MODE_TORQUE_CONTROL;
     driveAxis_->controller_.config_.input_mode = ODriveIntf::ControllerIntf::INPUT_MODE_PASSTHROUGH;
+#endif
 
     target_input_output_gear_ratio_ =
         get_fixed_gear(currentGear_);
@@ -57,10 +68,43 @@ void BikeController::start_bike_controller(void) {
 
 void BikeController::update_measurements(float delta_t) {
     update_crank_speed(delta_t);
-    update_wheel_speed(delta_t);
-
     update_crank_motor_torque();
+
+#ifdef BIKE_SINGLE_MOTOR_TEST
+    update_simulated_wheel(delta_t);
+#else
+    update_wheel_speed(delta_t);
     update_wheel_motor_torque();
+#endif
+}
+
+void BikeController::update_simulated_wheel(float delta_t) {
+    if (delta_t <= 0.0f) {
+        return;
+    }
+
+    const float drive_torque =
+        wheel_torque_command_;
+
+    float load_torque = 0.0f;
+
+    if (wheel_speed_estimate_ > 0.0f) {
+        load_torque =
+            config_.simulated_wheel_load;
+    }
+
+    const float accel =
+        (drive_torque - load_torque) /
+        config_.wheel_inertia;
+
+    wheel_accel_estimate_ = accel;
+
+    wheel_speed_estimate_ +=
+        accel * delta_t;
+
+    if (wheel_speed_estimate_ < 0.0f) {
+        wheel_speed_estimate_ = 0.0f;
+    }
 }
 
 void BikeController::update_crank_motor_torque(void) {
@@ -259,8 +303,11 @@ void BikeController::update_values(void) {
 }
 
 void BikeController::run_control_loop(void) {
+#ifdef BIKE_SINGLE_MOTOR_TEST
+    if (pedalAxis_ == nullptr) return;
+#else
     if (pedalAxis_ == nullptr || driveAxis_ == nullptr) return;
-
+#endif
     // Check for axis errors as this may impact our state
     check_axis_states();
 
@@ -276,11 +323,14 @@ void BikeController::run_control_loop(void) {
             requested_state_ = BIKE_STATE_CALIBRATION;  // Go to Calibration
 
             pedalAxis_->requested_state_ = ODriveIntf::AxisIntf::AXIS_STATE_FULL_CALIBRATION_SEQUENCE;
+#ifndef BIKE_SINGLE_MOTOR_TEST
             driveAxis_->requested_state_ = ODriveIntf::AxisIntf::AXIS_STATE_FULL_CALIBRATION_SEQUENCE;
+#endif
         } break;
 
         case BIKE_STATE_CALIBRATION: {
-            // We just wait for the axes calibration to finish
+// We just wait for the axes calibration to finish
+#ifndef BIKE_SINGLE_MOTOR_TEST
             bool calibration_done =
                 pedalAxis_->current_state_ == ODriveIntf::AxisIntf::AXIS_STATE_IDLE &&
                 driveAxis_->current_state_ == ODriveIntf::AxisIntf::AXIS_STATE_IDLE &&
@@ -288,6 +338,12 @@ void BikeController::run_control_loop(void) {
                 driveAxis_->current_state_ != ODriveIntf::AxisIntf::AXIS_STATE_FULL_CALIBRATION_SEQUENCE &&
                 pedalAxis_->error_ == ODriveIntf::AxisIntf::ERROR_NONE &&
                 driveAxis_->error_ == ODriveIntf::AxisIntf::ERROR_NONE;
+#else
+            bool calibration_done =
+                pedalAxis_->current_state_ == ODriveIntf::AxisIntf::AXIS_STATE_IDLE &&
+                pedalAxis_->current_state_ != ODriveIntf::AxisIntf::AXIS_STATE_FULL_CALIBRATION_SEQUENCE &&
+                pedalAxis_->error_ == ODriveIntf::AxisIntf::ERROR_NONE;
+#endif
             if (calibration_done) {
                 // Double check
                 // bool ready = pedalAxis_->motor_.is_calibrated_ && pedalAxis_->encoder_.is_ready_ && driveAxis_->motor_.is_calibrated_ && driveAxis_->encoder_.is_ready_;
@@ -300,14 +356,18 @@ void BikeController::run_control_loop(void) {
         case BIKE_STATE_IDLE: {
             // IDLE means no commanded torque.
             pedalAxis_->controller_.input_torque_ = 0.0f;
+#ifndef BIKE_SINGLE_MOTOR_TEST
             driveAxis_->controller_.input_torque_ = 0.0f;
+#endif
 
             if (rider_active()) {
                 pedalAxis_->requested_state_ =
                     ODriveIntf::AxisIntf::AXIS_STATE_CLOSED_LOOP_CONTROL;
 
+#ifndef BIKE_SINGLE_MOTOR_TEST
                 driveAxis_->requested_state_ =
                     ODriveIntf::AxisIntf::AXIS_STATE_CLOSED_LOOP_CONTROL;
+#endif
 
                 requested_state_ = BIKE_STATE_CONTROL;
             } else {
@@ -315,21 +375,27 @@ void BikeController::run_control_loop(void) {
                 pedalAxis_->requested_state_ =
                     ODriveIntf::AxisIntf::AXIS_STATE_IDLE;
 
+#ifndef BIKE_SINGLE_MOTOR_TEST
                 driveAxis_->requested_state_ =
                     ODriveIntf::AxisIntf::AXIS_STATE_IDLE;
+#endif
             }
         } break;
 
         case BIKE_STATE_CONTROL: {
             if (rider_stopped()) {
                 pedalAxis_->controller_.input_torque_ = 0.0f;
+#ifndef BIKE_SINGLE_MOTOR_TEST
                 driveAxis_->controller_.input_torque_ = 0.0f;
+#endif
 
                 pedalAxis_->requested_state_ =
                     ODriveIntf::AxisIntf::AXIS_STATE_IDLE;
 
+#ifndef BIKE_SINGLE_MOTOR_TEST
                 driveAxis_->requested_state_ =
                     ODriveIntf::AxisIntf::AXIS_STATE_IDLE;
+#endif
 
                 requested_state_ = BIKE_STATE_IDLE;
                 reset_control_state();
@@ -338,9 +404,11 @@ void BikeController::run_control_loop(void) {
                     crank_torque_command_ /
                     config_.gear_ratio_pedal;
 
+#ifndef BIKE_SINGLE_MOTOR_TEST
                 driveAxis_->controller_.input_torque_ =
                     wheel_torque_command_ /
                     config_.gear_ratio_drive;
+#endif
             }
         } break;
 
@@ -540,7 +608,9 @@ void BikeController::check_axis_states(void) {
         case ODriveIntf::AxisIntf::ERROR_OVER_TEMP:
         case ODriveIntf::AxisIntf::ERROR_UNKNOWN_POSITION: {
             pedalAxis_->requested_state_ = ODriveIntf::AxisIntf::AXIS_STATE_IDLE;
+#ifndef BIKE_SINGLE_MOTOR_TEST
             driveAxis_->requested_state_ = ODriveIntf::AxisIntf::AXIS_STATE_IDLE;
+#endif
             current_state_ = BIKE_STATE_ERROR;
             break;
         }
@@ -549,6 +619,7 @@ void BikeController::check_axis_states(void) {
             break;
     }
 
+#ifndef BIKE_SINGLE_MOTOR_TEST
     switch (driveAxis_->error_) {
         case ODriveIntf::AxisIntf::ERROR_NONE:
             break;
@@ -569,6 +640,7 @@ void BikeController::check_axis_states(void) {
         default:
             break;
     }
+#endif
 }
 
 void BikeController::update_bike_state(void) {
@@ -620,4 +692,10 @@ void BikeController::reset_control_state(void) {
 
     crank_torque_command_ = 0.0f;
     wheel_torque_command_ = 0.0f;
+
+#ifdef BIKE_SINGLE_MOTOR_TEST
+    wheel_speed_estimate_ = 0.0f;
+    wheel_accel_estimate_ = 0.0f;
+    _last_wheel_speed_estimate = 0.0f;
+#endif
 }
