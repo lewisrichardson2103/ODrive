@@ -19,6 +19,21 @@ void BikeController::SetAxes(Axis* pedalAxis, Axis* driveAxis) {
 #endif
 }
 
+/*
+NOTE: Encoder config has been removed from here as it should persist on the O-Drive
+This should be done once to configure it:
+    odrv0.axis0.encoder.config.mode = ENCODER_MODE_SPI_ABS_AMS
+    odrv0.axis0.encoder.config.cpr = 16384
+    odrv0.axis0.encoder.config.abs_spi_cs_gpio_pin = 3
+
+    odrv0.axis1.encoder.config.mode = ENCODER_MODE_SPI_ABS_AMS
+    odrv0.axis1.encoder.config.cpr = 16384
+    odrv0.axis1.encoder.config.abs_spi_cs_gpio_pin = 4
+
+    odrv0.save_configuration()
+    odrv0.reboot()
+*/
+
 void BikeController::start_bike_controller(void) {
     // Any startup stuff we need to do goes here. it could be configuring the axes / motor controllers
 
@@ -39,14 +54,6 @@ void BikeController::start_bike_controller(void) {
     driveAxis_->motor_.config_.motor_type = ODriveIntf::MotorIntf::MOTOR_TYPE_HIGH_CURRENT;
 #endif
 
-    // Encoder Config
-    pedalAxis_->encoder_.config_.mode = ODriveIntf::EncoderIntf::MODE_INCREMENTAL;
-    pedalAxis_->encoder_.config_.cpr = 8192;
-
-#ifndef BIKE_SINGLE_MOTOR_TEST
-    driveAxis_->encoder_.config_.mode = ODriveIntf::EncoderIntf::MODE_INCREMENTAL;
-    driveAxis_->encoder_.config_.cpr = 8192;
-#endif
     // Motor / Control Config
 
     pedalAxis_->controller_.config_.control_mode = ODriveIntf::ControllerIntf::CONTROL_MODE_TORQUE_CONTROL;
@@ -320,34 +327,64 @@ void BikeController::run_control_loop(void) {
             // This is the first time into this so we can do any startup we need and then move to the next state
             start_bike_controller();
 
-            requested_state_ = BIKE_STATE_CALIBRATION;  // Go to Calibration
+            const bool pedal_ready =
+                pedalAxis_->motor_.is_calibrated_ &&
+                pedalAxis_->encoder_.is_ready_;
 
-            pedalAxis_->requested_state_ = ODriveIntf::AxisIntf::AXIS_STATE_FULL_CALIBRATION_SEQUENCE;
 #ifndef BIKE_SINGLE_MOTOR_TEST
-            driveAxis_->requested_state_ = ODriveIntf::AxisIntf::AXIS_STATE_FULL_CALIBRATION_SEQUENCE;
+            const bool drive_ready =
+                driveAxis_->motor_.is_calibrated_ &&
+                driveAxis_->encoder_.is_ready_;
+
+            const bool calibration_required =
+                !pedal_ready || !drive_ready;
+#else
+            const bool calibration_required =
+                !pedal_ready;
 #endif
+
+            if (calibration_required) {
+                requested_state_ = BIKE_STATE_CALIBRATION;
+
+                if (!pedal_ready) {
+                    pedalAxis_->requested_state_ =
+                        ODriveIntf::AxisIntf::AXIS_STATE_FULL_CALIBRATION_SEQUENCE;
+                }
+
+#ifndef BIKE_SINGLE_MOTOR_TEST
+                if (!drive_ready) {
+                    driveAxis_->requested_state_ =
+                        ODriveIntf::AxisIntf::AXIS_STATE_FULL_CALIBRATION_SEQUENCE;
+                }
+#endif
+            } else {
+                requested_state_ = BIKE_STATE_IDLE;
+                reset_control_state();
+            }
         } break;
 
         case BIKE_STATE_CALIBRATION: {
-// We just wait for the axes calibration to finish
-#ifndef BIKE_SINGLE_MOTOR_TEST
-            bool calibration_done =
-                pedalAxis_->current_state_ == ODriveIntf::AxisIntf::AXIS_STATE_IDLE &&
-                driveAxis_->current_state_ == ODriveIntf::AxisIntf::AXIS_STATE_IDLE &&
-                pedalAxis_->current_state_ != ODriveIntf::AxisIntf::AXIS_STATE_FULL_CALIBRATION_SEQUENCE &&
-                driveAxis_->current_state_ != ODriveIntf::AxisIntf::AXIS_STATE_FULL_CALIBRATION_SEQUENCE &&
-                pedalAxis_->error_ == ODriveIntf::AxisIntf::ERROR_NONE &&
-                driveAxis_->error_ == ODriveIntf::AxisIntf::ERROR_NONE;
-#else
-            bool calibration_done =
-                pedalAxis_->current_state_ == ODriveIntf::AxisIntf::AXIS_STATE_IDLE &&
-                pedalAxis_->current_state_ != ODriveIntf::AxisIntf::AXIS_STATE_FULL_CALIBRATION_SEQUENCE &&
+            // We just wait for the axes calibration to finish
+            const bool pedal_ready =
+                pedalAxis_->motor_.is_calibrated_ &&
+                pedalAxis_->encoder_.is_ready_ &&
                 pedalAxis_->error_ == ODriveIntf::AxisIntf::ERROR_NONE;
+
+#ifndef BIKE_SINGLE_MOTOR_TEST
+            const bool drive_ready =
+                driveAxis_->motor_.is_calibrated_ &&
+                driveAxis_->encoder_.is_ready_ &&
+                driveAxis_->error_ == ODriveIntf::AxisIntf::ERROR_NONE;
+
+            const bool calibration_done =
+                pedal_ready &&
+                drive_ready;
+#else
+            const bool calibration_done =
+                pedal_ready;
 #endif
+
             if (calibration_done) {
-                // Double check
-                // bool ready = pedalAxis_->motor_.is_calibrated_ && pedalAxis_->encoder_.is_ready_ && driveAxis_->motor_.is_calibrated_ && driveAxis_->encoder_.is_ready_;
-                // We should now be able to move on
                 requested_state_ = BIKE_STATE_IDLE;
                 reset_control_state();
             }
