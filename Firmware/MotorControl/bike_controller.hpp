@@ -7,6 +7,8 @@ class BikeController;
 
 #include "axis.hpp"
 
+// #define BIKE_SINGLE_MOTOR_TEST
+
 class BikeController : public ODriveIntf::BikeControllerIntf {
    public:
     BikeController();
@@ -117,7 +119,9 @@ class BikeController : public ODriveIntf::BikeControllerIntf {
 
     void update_measurements(float delta_t);
     void update_crank_speed(float delta_t);
+#ifdef BIKE_SINGLE_MOTOR_TEST
     void update_simulated_wheel(float delta_t);
+#endif
     void update_wheel_speed(float delta_t);
     void update_crank_motor_torque(void);
     void update_wheel_motor_torque(void);

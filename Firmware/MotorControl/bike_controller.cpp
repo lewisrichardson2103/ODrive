@@ -2,8 +2,6 @@
 
 #include "utils.hpp"
 
-// #define BIKE_SINGLE_MOTOR_TEST
-
 static constexpr float TWO_PI = 6.28318530718f;
 static constexpr float TURNS_PER_SEC_TO_RAD_PER_SEC = TWO_PI;
 static constexpr float RAD_PER_SEC_TO_RPM = 60.0f / TWO_PI;
@@ -14,10 +12,10 @@ BikeController::BikeController() {
 
 void BikeController::SetAxes(Axis* pedalAxis, Axis* driveAxis) {
     pedalAxis_ = pedalAxis;
-    driveAxis_ = driveAxis;
-
 #ifdef BIKE_SINGLE_MOTOR_TEST
-    driveAxis = nullptr;
+    driveAxis_ = nullptr;
+#else
+    driveAxis_ = driveAxis;
 #endif
 }
 
@@ -78,6 +76,7 @@ void BikeController::update_measurements(float delta_t) {
 #endif
 }
 
+#ifdef BIKE_SINGLE_MOTOR_TEST
 void BikeController::update_simulated_wheel(float delta_t) {
     if (delta_t <= 0.0f) {
         return;
@@ -106,6 +105,7 @@ void BikeController::update_simulated_wheel(float delta_t) {
         wheel_speed_estimate_ = 0.0f;
     }
 }
+#endif
 
 void BikeController::update_crank_motor_torque(void) {
     const float motor_torque =
