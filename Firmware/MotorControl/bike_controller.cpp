@@ -100,10 +100,10 @@ void BikeController::update_simulated_wheel(float delta_t) {
         (drive_torque - load_torque) /
         config_.wheel_inertia;
 
-    wheel_accel_estimate_ += config_.wheel_accel_smoothing_alpha * (accel - wheel_accel_estimate_);
+    lowpassfilter(wheel_accel_estimate_, accel, config_.wheel_accel_smoothing_alpha);
 
     float raw_wheel_speed_estimate = wheel_accel_estimate_ * delta_t;
-    wheel_speed_estimate_ += config_.wheel_speed_smoothing_alpha * (raw_wheel_speed_estimate - wheel_speed_estimate_);
+    lowpassfilter(wheel_speed_estimate_, raw_wheel_speed_estimate, config_.wheel_speed_smoothing_alpha);
 
     wheel_speed_estimate_ =
         std::clamp(
@@ -121,10 +121,7 @@ void BikeController::update_crank_motor_torque(void) {
     const float geared_motor_torque =
         measured_motor_torque *
         config_.gear_ratio_pedal;
-
-    crank_motor_torque_ +=
-        config_.torque_smoothing_alpha *
-        (geared_motor_torque - crank_motor_torque_);
+    lowpassfilter(crank_motor_torque_, geared_motor_torque, config_.torque_smoothing_alpha);
 }
 
 void BikeController::update_wheel_motor_torque(void) {
@@ -135,10 +132,7 @@ void BikeController::update_wheel_motor_torque(void) {
     const float geared_motor_torque =
         measured_motor_torque *
         config_.gear_ratio_drive;
-
-    wheel_motor_torque_ +=
-        config_.torque_smoothing_alpha *
-        (geared_motor_torque - wheel_motor_torque_);
+    lowpassfilter(wheel_motor_torque_, geared_motor_torque, config_.torque_smoothing_alpha);
 }
 
 void BikeController::update_sync_speed_error(void) {
@@ -492,19 +486,14 @@ void BikeController::update_crank_speed(float delta_t) {
             motor_speed_rad_s / config_.gear_ratio_pedal;
 
         newVal = newVal < 0.0f ? 0.0f : newVal;
-
-        crank_speed_estimate_ +=
-            config_.crank_speed_smoothing_alpha * (newVal - crank_speed_estimate_);
+        lowpassfilter(crank_speed_estimate_, newVal, config_.crank_speed_smoothing_alpha);
 
         if (delta_t > 0.0f) {
             const float raw_crank_accel =
                 (crank_speed_estimate_ -
                  _last_crank_speed_estimate) /
                 delta_t;
-
-            crank_accel_estimate_ +=
-                config_.crank_accel_smoothing_alpha *
-                (raw_crank_accel - crank_accel_estimate_);
+            lowpassfilter(crank_accel_estimate_, raw_crank_accel, config_.crank_accel_smoothing_alpha);
         }
 
         _last_crank_speed_estimate =
@@ -526,15 +515,13 @@ void BikeController::update_wheel_speed(float delta_t) {
         // Convert motor speed to wheel speed through the fixed physical gearbox.
         const float newVal =
             motor_speed_rad_s / config_.gear_ratio_drive;
-
-        wheel_speed_estimate_ +=
-            config_.wheel_speed_smoothing_alpha * (newVal - wheel_speed_estimate_);
+        lowpassfilter(wheel_speed_estimate_, newVal, config_.wheel_speed_smoothing_alpha);
 
         if (delta_t > 0.0f) {
             float raw_accel = (wheel_speed_estimate_ -
                                _last_wheel_speed_estimate) /
                               delta_t;
-            wheel_accel_estimate_ += config_.wheel_accel_smoothing_alpha * (raw_accel - wheel_accel_estimate_);
+            lowpassfilter(wheel_accel_estimate_, raw_accel, config_.wheel_accel_smoothing_alpha);
         }
 
         _last_wheel_speed_estimate =
@@ -547,8 +534,7 @@ void BikeController::update_rider_torques(float delta_t) {
         (config_.crank_inertia * crank_accel_estimate_) -
         crank_motor_torque_;
 
-    rider_torque_estimate_ +=
-        config_.torque_smoothing_alpha * (raw_rider_torque - rider_torque_estimate_);
+    lowpassfilter(rider_torque_estimate_, raw_rider_torque, config_.torque_smoothing_alpha);
 
     rider_torque_estimate_ =
         std::max(0.0f, rider_torque_estimate_);
@@ -745,4 +731,8 @@ void BikeController::reset_control_state(void) {
     wheel_accel_estimate_ = 0.0f;
     _last_wheel_speed_estimate = 0.0f;
 #endif
+}
+
+float lowpassfilter(const float& oldVal, const float& newVal, const float& alpha) {
+    oldVal += alpha * (newVal - oldVal);
 }

@@ -158,6 +158,8 @@ class BikeController : public ODriveIntf::BikeControllerIntf {
     bool rider_active(void) const;
     bool rider_stopped(void) const;
 
+    void lowpassfilter(float& value, const float& newVal, const float& alpha);
+
    private:
     float _last_crank_speed_estimate = 0.0f;
     float last_rider_torque = 0.0f;
