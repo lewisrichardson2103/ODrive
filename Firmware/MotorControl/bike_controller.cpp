@@ -96,14 +96,17 @@ void BikeController::update_simulated_wheel(float delta_t) {
         config_.simulated_wheel_load *
         wheel_speed_estimate_;
 
-    const float accel =
+    const float raw_accel =
         (drive_torque - load_torque) /
         config_.wheel_inertia;
 
-    lowpassfilter(wheel_accel_estimate_, accel, config_.wheel_accel_smoothing_alpha);
+    lowpassfilter(
+        wheel_accel_estimate_,
+        raw_accel,
+        config_.wheel_accel_smoothing_alpha);
 
-    float raw_wheel_speed_estimate = wheel_accel_estimate_ * delta_t;
-    lowpassfilter(wheel_speed_estimate_, raw_wheel_speed_estimate, config_.wheel_speed_smoothing_alpha);
+    wheel_speed_estimate_ +=
+        wheel_accel_estimate_ * delta_t;
 
     wheel_speed_estimate_ =
         std::clamp(
@@ -733,6 +736,6 @@ void BikeController::reset_control_state(void) {
 #endif
 }
 
-float lowpassfilter(const float& oldVal, const float& newVal, const float& alpha) {
+void BikeController::lowpassfilter(float& oldVal, const float& newVal, const float& alpha) {
     oldVal += alpha * (newVal - oldVal);
 }
