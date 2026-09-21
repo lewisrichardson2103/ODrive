@@ -92,12 +92,9 @@ void BikeController::update_simulated_wheel(float delta_t) {
     const float drive_torque =
         wheel_torque_command_;
 
-    float load_torque = 0.0f;
-
-    if (wheel_speed_estimate_ > 0.0f) {
-        load_torque =
-            config_.simulated_wheel_load;
-    }
+    const float load_torque =
+        config_.simulated_wheel_load *
+        wheel_speed_estimate_;
 
     const float accel =
         (drive_torque - load_torque) /
@@ -108,9 +105,11 @@ void BikeController::update_simulated_wheel(float delta_t) {
     wheel_speed_estimate_ +=
         accel * delta_t;
 
-    if (wheel_speed_estimate_ < 0.0f) {
-        wheel_speed_estimate_ = 0.0f;
-    }
+    wheel_speed_estimate_ =
+        std::clamp(
+            wheel_speed_estimate_,
+            0.0f,
+            50.0f);
 }
 #endif
 
@@ -286,6 +285,8 @@ void BikeController::update_values(void) {
     float delta_t =
         (now - _last_update_time) *
         MICRO_TO_SEC;
+
+    delta_t_ = delta_t;
 
     _last_update_time = now;
 

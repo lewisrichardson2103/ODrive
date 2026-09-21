@@ -7,7 +7,7 @@ class BikeController;
 
 #include "axis.hpp"
 
-// #define BIKE_SINGLE_MOTOR_TEST
+#define BIKE_SINGLE_MOTOR_TEST
 
 class BikeController : public ODriveIntf::BikeControllerIntf {
    public:
@@ -49,9 +49,9 @@ class BikeController : public ODriveIntf::BikeControllerIntf {
 
         float gear_ratio_pedal = 1.0f;
         float gear_ratio_drive = 1.0f;
-        float cadence_smoothing_alpha = 1.0f;
+        float cadence_smoothing_alpha = 0.01f;
         float wheel_speed_smoothing_alpha = 1.0f;
-        float torque_smoothing_alpha = 1.0f;
+        float torque_smoothing_alpha = 0.01f;
         float max_i_o_gear_ratio = 4.0f;
         float min_i_o_gear_ratio = 1.0f;
         float max_gear_ratio_rate = 1.0f;  // ratio units per second
@@ -67,7 +67,7 @@ class BikeController : public ODriveIntf::BikeControllerIntf {
 
         float assist_ratio = 0.0f;  // 0 = no assist, 1 = 100% additional assist
 
-        float simulated_wheel_load = 1.0f;  // Nm - Only used in single motor testing
+        float simulated_wheel_load = 0.1f;  // Nm per rad/s - Only used in single motor testing
     };
 
     struct TaskTimes {
@@ -90,6 +90,8 @@ class BikeController : public ODriveIntf::BikeControllerIntf {
 
     float input_output_gear_ratio_ = 1.0f;  // 1:1 at the start
     float target_input_output_gear_ratio_ = 1.0f;
+
+    float delta_t_ = 0.0f;
 
     float sync_kp_ = 0.0f;
     float sync_ki_ = 0.0f;

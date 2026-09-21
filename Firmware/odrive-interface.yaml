@@ -558,6 +558,7 @@ interfaces:
       sync_ki:
         type: readonly float32
       drivetrain_inertia_gain: readonly float32
+      delta_t: readonly float32
       config:
         c_is_class: False
         attributes:
