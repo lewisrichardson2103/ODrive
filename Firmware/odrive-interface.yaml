@@ -519,6 +519,12 @@ interfaces:
       cadence_estimate:
         type: readonly float32
         doc: The current cadence value.
+      crank_motor_torque:
+        type: readonly float32
+        doc: Estimated crank motor torque calculated from motor Iq_measured and smoothed
+      wheel_motor_torque:
+        type: readonly float32
+        doc: Estimated wheel motor torque calculated from motor Iq_measured and smoothed
       rider_torque_estimate:
         type: readonly float32
         doc: The estimated rider torque based on torque on the motor and inertial interpolation.
@@ -594,12 +600,18 @@ interfaces:
             doc: |
               The internal gear ratio of the output side. I.e. the gear ratio that describes the speed of the wheel
               compared to the drive motor speed.
-          cadence_smoothing_alpha:
+          crank_speed_smoothing_alpha:
             type: float32
-            doc: A low pass filter is used to smooth the values for cadence, this is the alpha value.
+            doc: A low pass filter is used to smooth the values for crank speed, this is the alpha value.
+          crank_accel_smoothing_alpha:
+            type: float32
+            doc: A low pass filter is used to smooth the values for crank accel, this is the alpha value.
           wheel_speed_smoothing_alpha:
             type: float32
             doc: A low pass filter is used to smooth the values for wheel speed, this is the alpha value.
+          wheel_accel_smoothing_alpha:
+            type: float32
+            doc: A low pass filter is used to smooth the values for wheel accel, this is the alpha value.
           torque_smoothing_alpha:
             type: float32
             doc: A low pass filter to smooth the values for torque read from the motors

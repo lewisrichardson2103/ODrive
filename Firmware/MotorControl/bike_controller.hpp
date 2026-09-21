@@ -49,9 +49,12 @@ class BikeController : public ODriveIntf::BikeControllerIntf {
 
         float gear_ratio_pedal = 1.0f;
         float gear_ratio_drive = 1.0f;
-        float cadence_smoothing_alpha = 0.01f;
-        float wheel_speed_smoothing_alpha = 1.0f;
-        float torque_smoothing_alpha = 0.01f;
+        float crank_speed_smoothing_alpha = 0.01f;
+        float crank_accel_smoothing_alpha = 0.01f;
+        float wheel_speed_smoothing_alpha = 0.01f;
+        float wheel_accel_smoothing_alpha = 0.0001f;
+        float torque_smoothing_alpha = 0.001f;
+
         float max_i_o_gear_ratio = 4.0f;
         float min_i_o_gear_ratio = 1.0f;
         float max_gear_ratio_rate = 1.0f;  // ratio units per second
@@ -111,6 +114,9 @@ class BikeController : public ODriveIntf::BikeControllerIntf {
     float wheel_speed_estimate_ = 0.0f;  // rad/s
     float wheel_accel_estimate_ = 0.0f;  // rad/s^2
 
+    float crank_motor_torque_ = 0.0f;  // Nm at crank after physical gearbox
+    float wheel_motor_torque_ = 0.0f;  // Nm at wheel after physical gearbox
+
     float virtual_wheel_speed_ = 0.0f;
 
     Config_t config_;
@@ -157,9 +163,6 @@ class BikeController : public ODriveIntf::BikeControllerIntf {
     float last_rider_torque = 0.0f;
     float _last_wheel_speed_estimate = 0.0f;
     unsigned long _last_update_time = 0.0;
-
-    float crank_motor_torque_ = 0.0f;  // Nm at crank after physical gearbox
-    float wheel_motor_torque_ = 0.0f;  // Nm at wheel after physical gearbox
 
     Axis* pedalAxis_ = nullptr;
     Axis* driveAxis_ = nullptr;
