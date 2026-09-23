@@ -124,7 +124,7 @@ void BikeController::update_crank_motor_torque(void) {
     const float geared_motor_torque =
         measured_motor_torque *
         config_.gear_ratio_pedal;
-    lowpassfilter(crank_motor_torque_, geared_motor_torque, config_.torque_smoothing_alpha);
+    lowpassfilter(crank_motor_torque_, geared_motor_torque, config_.crank_torque_smoothing_alpha);
 }
 
 void BikeController::update_wheel_motor_torque(void) {
@@ -135,7 +135,7 @@ void BikeController::update_wheel_motor_torque(void) {
     const float geared_motor_torque =
         measured_motor_torque *
         config_.gear_ratio_drive;
-    lowpassfilter(wheel_motor_torque_, geared_motor_torque, config_.torque_smoothing_alpha);
+    lowpassfilter(wheel_motor_torque_, geared_motor_torque, config_.wheel_torque_smoothing_alpha);
 }
 
 void BikeController::update_sync_speed_error(void) {
@@ -537,7 +537,7 @@ void BikeController::update_rider_torques(float delta_t) {
         (config_.crank_inertia * crank_accel_estimate_) -
         crank_motor_torque_;
 
-    lowpassfilter(rider_torque_estimate_, raw_rider_torque, config_.torque_smoothing_alpha);
+    lowpassfilter(rider_torque_estimate_, raw_rider_torque, config_.rider_torque_smoothing_alpha);
 
     rider_torque_estimate_ =
         std::max(0.0f, rider_torque_estimate_);

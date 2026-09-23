@@ -51,9 +51,11 @@ class BikeController : public ODriveIntf::BikeControllerIntf {
         float gear_ratio_drive = 1.0f;
         float crank_speed_smoothing_alpha = 0.01f;
         float crank_accel_smoothing_alpha = 0.01f;
+        float crank_torque_smoothing_alpha = 0.01f;
+        float rider_torque_smoothing_alpha = 0.0001f;
         float wheel_speed_smoothing_alpha = 0.01f;
         float wheel_accel_smoothing_alpha = 0.0001f;
-        float torque_smoothing_alpha = 0.001f;
+        float wheel_torque_smoothing_alpha = 0.01f;
 
         float max_i_o_gear_ratio = 4.0f;
         float min_i_o_gear_ratio = 1.0f;
@@ -70,7 +72,7 @@ class BikeController : public ODriveIntf::BikeControllerIntf {
 
         float assist_ratio = 0.0f;  // 0 = no assist, 1 = 100% additional assist
 
-        float simulated_wheel_load = 0.1f;  // Nm per rad/s - Only used in single motor testing
+        float simulated_wheel_load = 0.25f;  // Nm per rad/s - Only used in single motor testing
     };
 
     struct TaskTimes {

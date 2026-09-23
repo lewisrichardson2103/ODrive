@@ -516,23 +516,39 @@ interfaces:
         doc: |
           This is used to command the bike controller to change state or perform certain routines.
           Values input here will be "consumed" and queued by the state machine handler.  Thus, reading this value back will usually show `UNDEFINED` (0).
+      crank_speed_estimate:
+        type: readonly float32
+        doc: Crank speed after fixed gearbox in rad/s
+      crank_accel_estimate:
+        type: readonly float32
+        doc: Crank speed acceleration after fixed gearbox in rad/s^2
       cadence_estimate:
         type: readonly float32
         doc: The current cadence value.
       crank_motor_torque:
         type: readonly float32
-        doc: Estimated crank motor torque calculated from motor Iq_measured and smoothed
+        doc: Estimated crank motor torque calculated from motor Iq_measured and low pass filter
+      crank_torque_command:
+        type: readonly float32
+        doc: Requested resistance (negative) torque at the crank in Nm. Resistance the rider will feel
+      rider_torque_estimate:
+        type: readonly float32
+        doc: The estimated rider torque in Nm based on torque on the motor and inertial interpolation.
+      rider_power_estimate:
+        type: readonly float32
+        doc: The estimated rider power in watts based on torque on the motor and inertial interpolation.
+      wheel_speed_estimate:
+        type: readonly float32
+        doc: The current wheel speed value in rad/s after fixed internal gearbox
+      wheel_accel_estimate:
+        type: readonly float32
+        doc: Wheel speed acceleration after fixed gearbox in rad/s^2
       wheel_motor_torque:
         type: readonly float32
         doc: Estimated wheel motor torque calculated from motor Iq_measured and smoothed
-      rider_torque_estimate:
+      wheel_torque_command:
         type: readonly float32
-        doc: The estimated rider torque based on torque on the motor and inertial interpolation.
-      rider_power_estimate:
-        type: readonly float32
-      wheel_speed_estimate:
-        type: readonly float32
-        doc: The current wheel speed value.
+        doc: Requested torque for the drive motor at the wheel in Nm.
       sync_proportional:
         type: readonly float32
       sync_integral:
@@ -550,10 +566,6 @@ interfaces:
         doc: |
           Virtual drivetrain torque request after applying rider
           torque authority, in Nm.
-      crank_torque_command:
-        type: readonly float32
-      wheel_torque_command:
-        type: readonly float32
       human_fraction:
         type: readonly float32
         doc: |
@@ -612,9 +624,15 @@ interfaces:
           wheel_accel_smoothing_alpha:
             type: float32
             doc: A low pass filter is used to smooth the values for wheel accel, this is the alpha value.
-          torque_smoothing_alpha:
+          rider_torque_smoothing_alpha:
             type: float32
-            doc: A low pass filter to smooth the values for torque read from the motors
+            doc: A low pass filter to smooth the values for torque from the rider
+          wheel_torque_smoothing_alpha:
+            type: float32
+            doc: A low pass filter to smooth the values for torque from the real wheel
+          crank_torque_smoothing_alpha:
+            type: float32
+            doc: A low pass filter to smooth the values for torque from the crank motor
           max_i_o_gear_ratio: float32
           min_i_o_gear_ratio: float32
           max_gear_ratio_rate:
