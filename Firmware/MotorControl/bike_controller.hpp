@@ -172,6 +172,7 @@ class BikeController : public ODriveIntf::BikeControllerIntf {
     float last_rider_torque = 0.0f;
     float _last_wheel_speed_estimate = 0.0f;
     unsigned long _last_update_time = 0.0;
+    bool virtual_drivetrain_torque_limited = false;
 
     Axis* pedalAxis_ = nullptr;
     Axis* driveAxis_ = nullptr;

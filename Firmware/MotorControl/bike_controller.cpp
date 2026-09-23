@@ -229,6 +229,10 @@ void BikeController::limit_virtual_torque(void) {
             virtual_torque_request_,
             0.0f,
             virtual_torque_max_);
+
+    virtual_drivetrain_torque_limited =
+        virtual_torque_request_ >
+        virtual_torque_max_;
 }
 
 void BikeController::update_virtual_torque_commands(void) {
@@ -601,6 +605,8 @@ void BikeController::update_auto_cadence(float delta_t) {
 
     if (fabs(cadence_error_) <= config_.cadence_tolerance) {
         gear_ratio_rate_command_ = 0.0f;
+        target_input_output_gear_ratio_ =
+            input_output_gear_ratio_;
         return;
     }
 
@@ -608,11 +614,10 @@ void BikeController::update_auto_cadence(float delta_t) {
         config_.cadence_kp *
         cadence_error_;
 
-    bool drivetrain_torque_limited =
-        virtual_torque_request_ >
-        virtual_torque_max_;
-
-    float available_rate = drivetrain_torque_limited ? config_.max_gear_ratio_rate * 0.1f : config_.max_gear_ratio_rate;
+    const float available_rate =
+        virtual_drivetrain_torque_limited
+            ? config_.max_gear_ratio_rate * 0.1f
+            : config_.max_gear_ratio_rate;
 
     gear_ratio_rate_command_ =
         std::clamp(
@@ -620,14 +625,18 @@ void BikeController::update_auto_cadence(float delta_t) {
             -available_rate,
             available_rate);
 
-    target_input_output_gear_ratio_ +=
-        gear_ratio_rate_command_ * delta_t;
+    input_output_gear_ratio_ +=
+        gear_ratio_rate_command_ *
+        delta_t;
 
     input_output_gear_ratio_ =
         std::clamp(
-            target_input_output_gear_ratio_,
+            input_output_gear_ratio_,
             config_.min_i_o_gear_ratio,
             config_.max_i_o_gear_ratio);
+
+    target_input_output_gear_ratio_ =
+        input_output_gear_ratio_;
 }
 
 void BikeController::update_active_gear_ratio(float delta_t) {
