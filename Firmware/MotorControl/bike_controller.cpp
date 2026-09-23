@@ -302,13 +302,12 @@ void BikeController::update_values(void) {
 
     // 2. Derived estimates
     update_rider_torques(delta_t);
+    update_assistance_state();
 
     // 3. Existing control calculations
-    calculate_target_gear_ratio();
-    update_active_gear_ratio(delta_t);
+    calculate_target_gear_ratio(delta_t);
 
     // 4. Virtual drivetrain measurements
-    update_assistance_state();
     update_virtual_drivetrain_gains();
     update_sync_speed_error();
     update_virtual_torque_authority();
@@ -563,37 +562,72 @@ void BikeController::update_rider_torques(float delta_t) {
         0.5f * rider_power_estimate_;
 }
 
-void BikeController::calculate_target_gear_ratio(void) {
+void BikeController::calculate_target_gear_ratio(float delta_t) {
     switch (mode_) {
         case ODriveIntf::BikeControllerIntf::BikeMode::BIKE_MODE_AUTO_CADENCE: {
-            float cadenceDelta = fabs(get_cadence_rpm() - config_.target_cadence);
-            if (cadenceDelta > config_.cadence_tolerance) {
-                float newGearRatio = (wheel_speed_estimate_ * RAD_PER_SEC_TO_RPM) / config_.target_cadence;
-                target_input_output_gear_ratio_ = std::clamp(newGearRatio, config_.min_i_o_gear_ratio, config_.max_i_o_gear_ratio);
-
-                if (target_input_output_gear_ratio_ < 1.0f || target_input_output_gear_ratio_ > 5.0f) {
-                    error_ = ERROR_CONTROLLER_FAILED;
-                }
-            }
+            update_auto_cadence(delta_t);
             break;
         }
 
         case ODriveIntf::BikeControllerIntf::BikeMode::BIKE_MODE_MANUAL: {
             target_input_output_gear_ratio_ = get_fixed_gear(currentGear_);
+            update_active_gear_ratio(delta_t);
             break;
         }
 
         case ODriveIntf::BikeControllerIntf::BikeMode::BIKE_MODE_AUTO_POWER: {
             float new_gear_ratio = config_.target_power / rider_power_estimate_;
             target_input_output_gear_ratio_ = std::clamp(new_gear_ratio, config_.min_i_o_gear_ratio, config_.max_i_o_gear_ratio);
+            update_active_gear_ratio(delta_t);
             break;
         }
 
         default: {
             target_input_output_gear_ratio_ = get_fixed_gear(currentGear_);
+            update_active_gear_ratio(delta_t);
             break;
         }
     }
+}
+
+void BikeController::update_auto_cadence(float delta_t) {
+    if (delta_t <= 0.0f) {
+        return;
+    }
+
+    cadence_error_ =
+        get_cadence_rpm() -
+        config_.target_cadence;
+
+    if (fabs(cadence_error_) <= config_.cadence_tolerance) {
+        gear_ratio_rate_command_ = 0.0f;
+        return;
+    }
+
+    gear_ratio_rate_command_ =
+        config_.cadence_kp *
+        cadence_error_;
+
+    bool drivetrain_torque_limited =
+        virtual_torque_request_ >
+        virtual_torque_max_;
+
+    float available_rate = drivetrain_torque_limited ? config_.max_gear_ratio_rate * 0.1f : config_.max_gear_ratio_rate;
+
+    gear_ratio_rate_command_ =
+        std::clamp(
+            gear_ratio_rate_command_,
+            -available_rate,
+            available_rate);
+
+    target_input_output_gear_ratio_ +=
+        gear_ratio_rate_command_ * delta_t;
+
+    input_output_gear_ratio_ =
+        std::clamp(
+            target_input_output_gear_ratio_,
+            config_.min_i_o_gear_ratio,
+            config_.max_i_o_gear_ratio);
 }
 
 void BikeController::update_active_gear_ratio(float delta_t) {

@@ -46,6 +46,8 @@ class BikeController : public ODriveIntf::BikeControllerIntf {
 
         float engage_cadence = 5.0f;     // rpm
         float disengage_cadence = 2.0f;  // rpm
+        float cadence_kp = 0.005f;       // ratio/s per RPM
+        float cadence_tolerance = 2.0f;  // RPM
 
         float gear_ratio_pedal = 1.0f;
         float gear_ratio_drive = 1.0f;
@@ -59,9 +61,8 @@ class BikeController : public ODriveIntf::BikeControllerIntf {
 
         float max_i_o_gear_ratio = 4.0f;
         float min_i_o_gear_ratio = 1.0f;
-        float max_gear_ratio_rate = 1.0f;  // ratio units per second
+        float max_gear_ratio_rate = 0.1f;  // ratio units per second
 
-        float cadence_tolerance = 5.0f;
         float pedal_torque_gradient_threshold = 1.0f;  // Nm/s
 
         float crank_inertia = 0.05f;  // kg m^2, effective inertia referred to crank
@@ -92,6 +93,9 @@ class BikeController : public ODriveIntf::BikeControllerIntf {
     float rider_torque_estimate_ = 0.0f;
     float rider_torque_gradient_ = 0.0f;
     float rider_power_estimate_ = 0.0f;
+
+    float cadence_error_ = 0.0f;
+    float gear_ratio_rate_command_ = 0.0f;
 
     float input_output_gear_ratio_ = 1.0f;  // 1:1 at the start
     float target_input_output_gear_ratio_ = 1.0f;
@@ -150,8 +154,9 @@ class BikeController : public ODriveIntf::BikeControllerIntf {
 
     void update_rider_torques(float delta_t);
 
-    void calculate_target_gear_ratio(void);
+    void calculate_target_gear_ratio(float delta_t);
     void update_active_gear_ratio(float delta_t);
+    void update_auto_cadence(float delta_t);
 
     void check_axis_states(void);
     void update_bike_state(void);

@@ -525,6 +525,9 @@ interfaces:
       cadence_estimate:
         type: readonly float32
         doc: The current cadence value.
+      cadence_error:
+        type: readonly float32
+        doc: Error for auto cadence loop.
       crank_motor_torque:
         type: readonly float32
         doc: Estimated crank motor torque calculated from motor Iq_measured and low pass filter
@@ -602,6 +605,12 @@ interfaces:
             type: float32
             doc: |
               The cadence lower threshold for determining when a rider has stopped pedaling
+          cadence_kp:
+            type: float32
+            doc: Proportional gain for cadence controller
+          cadence_tolerance:
+            type: float32
+            doc: Max tolerance before auto cadence kicks in
           gear_ratio_pedal:
             type: float32
             doc: |
@@ -638,7 +647,6 @@ interfaces:
           max_gear_ratio_rate:
             type: float32
             doc: A slew rate configuration for gear changes to smooth them out
-          cadence_tolerance: float32
           pedal_torque_gradient_threshold: float32
           crank_inertia: float32
           wheel_inertia: float32
