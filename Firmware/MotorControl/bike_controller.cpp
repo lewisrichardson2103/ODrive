@@ -471,6 +471,9 @@ void BikeController::run_control_loop(void) {
         case BIKE_STATE_ERROR: {
             // Handle errors
         } break;
+
+        case BIKE_STATE_TESTING: {
+                } break;
     }
 
     update_bike_state();

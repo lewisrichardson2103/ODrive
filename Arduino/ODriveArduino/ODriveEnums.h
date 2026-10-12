@@ -65,6 +65,7 @@ enum BikeState {
     BIKE_STATE_CONTROL                       = 3,
     BIKE_STATE_BRAKING                       = 4,
     BIKE_STATE_ERROR                         = 5,
+    BIKE_STATE_TESTING                       = 6,
 };
 
 // ODrive.BikeController.BikeMode

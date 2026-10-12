@@ -2065,6 +2065,8 @@ valuetypes:
         doc: Drive motor is in regenerative braking mode.
       ERROR:
         doc: The ODrive is in an error state on one or more of the axes.
+      TESTING:
+        doc: Used for manual operation in GUI for testing inertia etc.
 
   ODrive.BikeController.BikeMode:
     values:
