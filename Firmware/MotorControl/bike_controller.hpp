@@ -74,6 +74,9 @@ class BikeController : public ODriveIntf::BikeControllerIntf {
         float assist_ratio = 0.0f;  // 0 = no assist, 1 = 100% additional assist
 
         float simulated_wheel_load = 0.25f;  // Nm per rad/s - Only used in single motor testing
+
+        float crank_torque_cutoff_rpm = 8.0f;
+        float crank_torque_full_rpm = 15.0f;
     };
 
     struct TaskTimes {
@@ -148,6 +151,8 @@ class BikeController : public ODriveIntf::BikeControllerIntf {
 
     void update_virtual_torque_commands(void);
     void update_virtual_drivetrain_gains(void);
+
+    float limit_crank_torque(float requested_torque) const;
 
     float get_cadence_rpm() const;
     void update_values(void);

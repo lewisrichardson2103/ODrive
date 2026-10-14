@@ -664,6 +664,15 @@ interfaces:
           simulated_wheel_load:
             type: float32
             doc: Nm - Only used in single motor testing
+          crank_torque_cutoff_rpm:
+            type: float32
+            doc: |
+              For slowing down negative torque when the crank comes to rest to ensure the
+              pedal never gets driven the wrong way
+          crank_torque_full_rpm:
+            type: float32
+            doc: |
+              When to allow full negative torque against the rider. Linked to crank_torque_cutoff_rpm
       task_times:
         c_is_class: False
         attributes:

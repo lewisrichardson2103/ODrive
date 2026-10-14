@@ -235,6 +235,44 @@ void BikeController::limit_virtual_torque(void) {
         virtual_torque_max_;
 }
 
+float BikeController::limit_crank_torque(float requested_torque) const {
+    const auto velocity =
+        pedalAxis_->encoder_.vel_estimate_.any();
+
+    // Fail safe if velocity is unavailable.
+    if (!velocity.has_value() ||
+        !std::isfinite(*velocity) ||
+        config_.gear_ratio_pedal <= 0.0f) {
+        return 0.0f;
+    }
+
+    // Obtain physical crank RPM, not filtered cadence.
+    const float crank_rpm =
+        *velocity * 60.0f /
+        config_.gear_ratio_pedal;
+
+    // This safety guard applies to forward-pedalling resistance.
+    // No negative torque at or below the minimum speed.
+    if (crank_rpm <= config_.crank_torque_cutoff_rpm) {
+        return std::max(0.0f, requested_torque);
+    }
+
+    const float range =
+        std::max(0.1f,
+                 config_.crank_torque_full_rpm -
+                     config_.crank_torque_cutoff_rpm);
+
+    const float scale = std::clamp(
+        (crank_rpm - config_.crank_torque_cutoff_rpm) / range,
+        0.0f, 1.0f);
+
+    // Preserve forward-driving commands for now;
+    // scale only resistive torque.
+    return requested_torque < 0.0f
+               ? requested_torque * scale
+               : requested_torque;
+}
+
 void BikeController::update_virtual_torque_commands(void) {
     if (current_state_ != BIKE_STATE_CONTROL) {
         crank_torque_command_ = 0.0f;
@@ -450,8 +488,9 @@ void BikeController::run_control_loop(void) {
                 requested_state_ = BIKE_STATE_IDLE;
                 reset_control_state();
             } else {
+                const float safe_crank_torque = limit_crank_torque(crank_torque_command_);
                 pedalAxis_->controller_.input_torque_ =
-                    crank_torque_command_ /
+                    safe_crank_torque /
                     config_.gear_ratio_pedal;
 
 #ifndef BIKE_SINGLE_MOTOR_TEST
@@ -473,7 +512,7 @@ void BikeController::run_control_loop(void) {
         } break;
 
         case BIKE_STATE_TESTING: {
-                } break;
+        } break;
     }
 
     update_bike_state();
