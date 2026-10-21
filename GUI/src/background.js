@@ -66,7 +66,8 @@ function createWindow() {
     webPreferences: {
       // Use pluginOptions.nodeIntegration, leave this alone
       // See nklayman.github.io/vue-cli-plugin-electron-builder/guide/security.html#node-integration for more info
-      nodeIntegration: process.env.ELECTRON_NODE_INTEGRATION,
+      nodeIntegration: false,
+      contextIsolation: true,
       preload: path.join(__dirname, 'preload.js')
     },
     icon: path.join(__static, 'icon.png')
@@ -115,58 +116,100 @@ app.on('activate', () => {
 // initialization and is ready to create browser windows.
 // Some APIs can only be used after this event occurs.
 app.on('ready', async () => {
-  if (isDevelopment && !process.env.IS_TEST) {
-    // Install Vue Devtools
-    try {
-      await installExtension(VUEJS_DEVTOOLS)
-    } catch (e) {
-      console.error('Vue Devtools failed to install:', e.toString())
+    if (isDevelopment && !process.env.IS_TEST) {
+        try {
+            await installExtension(VUEJS_DEVTOOLS);
+        } catch (e) {
+            console.error(
+                'Vue Devtools failed to install:',
+                e.toString()
+            );
+        }
     }
-  }
-  createWindow()
-  // Figure out correct path and arguments to launch python server
-  let scriptFilename = path.join(app.getAppPath(), '../server', 'odrive_server.py');
-  const args = process.argv;
-  let effectiveCommand = [];
-  effectiveCommand.push(scriptFilename);
-  if (app.isPackaged === true) {
-    for (const arg of args.slice(1)) {
-      effectiveCommand.push(arg);
-    }
-  }
-  else {
-    for (const arg of args.slice(2)) {
-      effectiveCommand.push(arg);
-    }
-  }
-  // launch python server on event from renderer process (gui) and pipe stdout/stderr to it
-  ipcMain.on('start-server', () => {
-    server = spawn(getPyCmd(), effectiveCommand);
-    server.stdout.on('data', function (data) {
-      try {
-        console.log(data.toString('utf8'));
-      } catch (error) {
-        console.log(error);
-      }
-      try {
-        win.webContents.send('server-stdout', String(data.toString('utf8')));
-      } catch (error) {
-        console.log(error);
-      }
+
+    // Resolve local paths
+    const scriptFilename = path.resolve(
+        __dirname,
+        '../server/odrive_server.py'
+    );
+
+    const toolsPath = path.resolve(
+        __dirname,
+        '../../tools'
+    );
+
+    const effectiveCommand = [
+        scriptFilename,
+        toolsPath
+    ];
+
+    console.log('Python backend:', scriptFilename);
+    console.log('ODrive tools:', toolsPath);
+
+    // Register IPC handler BEFORE creating the window
+    ipcMain.on('start-server', () => {
+        console.log('Received start-server event');
+
+        if (server && server.exitCode === null) {
+            console.log('Python server already running');
+            return;
+        }
+
+        const pythonCommand = getPyCmd();
+
+        console.log('Launching Python:', pythonCommand);
+        console.log('Arguments:', effectiveCommand);
+
+        server = spawn(pythonCommand, effectiveCommand, {
+            cwd: path.dirname(scriptFilename),
+            env: {
+                ...process.env,
+                PYTHONUNBUFFERED: '1'
+            }
+        });
+
+        server.on('error', (err) => {
+            console.error('Python startup failed:', err);
+        });
+
+        server.on('exit', (code, signal) => {
+            console.log(
+                `Python exited: ${code}, signal: ${signal}`
+            );
+        });
+
+        server.stdout.on('data', (data) => {
+            console.log(data.toString('utf8'));
+
+            if (win && !win.isDestroyed()) {
+                win.webContents.send(
+                    'server-stdout',
+                    data.toString('utf8')
+                );
+            }
+        });
+
+        server.stderr.on('data', (data) => {
+            console.error(data.toString('utf8'));
+
+            if (win && !win.isDestroyed()) {
+                win.webContents.send(
+                    'server-stderr',
+                    data.toString('utf8')
+                );
+            }
+        });
     });
-    server.stderr.on('data', function (data) {
-      console.log(data.toString('utf8'));
-      try {
-        win.webContents.send('server-stderr', String(data.toString('utf8')));
-      } catch (error) {
-        console.log(error);
-      }
+
+    ipcMain.on('kill-server', () => {
+        if (server && server.exitCode === null) {
+            server.kill();
+        }
     });
-  })
-  ipcMain.on('kill-server', () => {
-    server.kill('SIGINT');
-  })
-})
+
+    // Create the GUI only once all IPC handlers exist
+    createWindow();
+});
 
 // Exit cleanly on request from parent process in development mode.
 if (isDevelopment) {

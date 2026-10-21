@@ -86,7 +86,8 @@ void StatusLedController::update() {
 static bool config_read_all() {
     bool success = board_read_config() &&
                    config_manager.read(&odrv.config_) &&
-                   config_manager.read(&odrv.can_.config_);
+                   config_manager.read(&odrv.can_.config_) &&
+                   config_manager.read(&odrv.bike_controller_.config_);
     for (size_t i = 0; (i < AXIS_COUNT) && success; ++i) {
         success = config_manager.read(&encoders[i].config_) &&
                   config_manager.read(&axes[i].sensorless_estimator_.config_) &&
@@ -106,7 +107,8 @@ static bool config_read_all() {
 static bool config_write_all() {
     bool success = board_write_config() &&
                    config_manager.write(&odrv.config_) &&
-                   config_manager.write(&odrv.can_.config_);
+                   config_manager.write(&odrv.can_.config_) &&
+                   config_manager.write(&odrv.bike_controller_.config_);
     for (size_t i = 0; (i < AXIS_COUNT) && success; ++i) {
         success = config_manager.write(&encoders[i].config_) &&
                   config_manager.write(&axes[i].sensorless_estimator_.config_) &&
@@ -126,6 +128,7 @@ static bool config_write_all() {
 static void config_clear_all() {
     odrv.config_ = {};
     odrv.can_.config_ = {};
+    odrv.bike_controller_.config_ = {};
     for (size_t i = 0; i < AXIS_COUNT; ++i) {
         encoders[i].config_ = {};
         axes[i].sensorless_estimator_.config_ = {};
@@ -417,9 +420,15 @@ void ODrive::control_loop_cb(uint32_t timestamp) {
         axis.encoder_.update();
     }
 
+    // Update the bicycle controller after both encoder
+    // estimates are available, but before the individual
+    // axis controllers consume their torque requests.
+    MEASURE_TIME(odrv.bike_controller_.task_times_.update) {
+        odrv.bike_controller_.run_control_loop();
+    }
+
     // Controller of either axis might use the encoder estimate of the other
     // axis so we process both encoders before we continue.
-
     for (auto& axis : axes) {
         MEASURE_TIME(axis.task_times_.sensorless_estimator_update)
         axis.sensorless_estimator_.update();
@@ -439,9 +448,6 @@ void ODrive::control_loop_cb(uint32_t timestamp) {
         MEASURE_TIME(axis.task_times_.current_controller_update)
         axis.motor_.current_control_.update(timestamp);  // uses the output of controller_ or open_loop_contoller_ and encoder_ or sensorless_estimator_ or acim_estimator_
     }
-
-    MEASURE_TIME(odrv.bike_controller_.task_times_.update)
-    odrv.bike_controller_.run_control_loop();
 
     // Tell the axis threads that the control loop has finished
     for (auto& axis : axes) {

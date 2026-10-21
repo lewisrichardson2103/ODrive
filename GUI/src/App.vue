@@ -3,8 +3,15 @@
     <!-- HEADER -->
     <div class="header" id="header">
       <button class="dash-button menu-button" @click="toggleMenu">Menu</button>
-      <div class="card menu" id="menu" :style="{top: menuTop}" v-show="showMenu">
-        <button class="dash-button menu-item" @click="exportDash">Export dash</button>
+      <div
+        class="card menu"
+        id="menu"
+        :style="{ top: menuTop }"
+        v-show="showMenu"
+      >
+        <button class="dash-button menu-item" @click="exportDash">
+          Export dash
+        </button>
         <button class="dash-button menu-item" @click="importDashWrapper">
           Import dash
           <input
@@ -19,27 +26,65 @@
             style="display: none"
           />
         </button>
-        <button class="dash-button menu-item" id="importButton" @click="calcImportLeft();calcImportTop();toggleImport()">Import ODrive config</button>
-        <button class="dash-button menu-item" id="exportButton" @click="calcExportLeft();calcExportTop();toggleExport()">Export ODrive config</button>
+        <button
+          class="dash-button menu-item"
+          id="importButton"
+          @click="
+            calcImportLeft();
+            calcImportTop();
+            toggleImport();
+          "
+        >
+          Import ODrive config
+        </button>
+        <button
+          class="dash-button menu-item"
+          id="exportButton"
+          @click="
+            calcExportLeft();
+            calcExportTop();
+            toggleExport();
+          "
+        >
+          Export ODrive config
+        </button>
       </div>
-      <div class="card import-menu" :style="{top: importTop, left: importLeft}" v-show="showImport">
-        <button v-for="odrive in Object.keys(odrives)" :key="odrive" class="dash-button" @click="importConfigWrapper">
-          {{odrive}}
+      <div
+        class="card import-menu"
+        :style="{ top: importTop, left: importLeft }"
+        v-show="showImport"
+      >
+        <button
+          v-for="odrive in Object.keys(odrives)"
+          :key="odrive"
+          class="dash-button"
+          @click="importConfigWrapper"
+        >
+          {{ odrive }}
           <input
             type="file"
             id="inputConfig"
             ref="fileInputConfig"
-            @change="
-              importConfigFile($event.target, odrive);
-            "
+            @change="importConfigFile($event.target, odrive)"
             onclick="this.value=null"
             value
             style="display: none"
           />
-          </button>
+        </button>
       </div>
-      <div class="card export-menu" :style="{top: exportTop, left: exportLeft}" v-show="showExport">
-        <button v-for="odrive in Object.keys(odrives)" :key="odrive" class="dash-button" @click="exportConfig(odrive)">{{odrive}}</button>
+      <div
+        class="card export-menu"
+        :style="{ top: exportTop, left: exportLeft }"
+        v-show="showExport"
+      >
+        <button
+          v-for="odrive in Object.keys(odrives)"
+          :key="odrive"
+          class="dash-button"
+          @click="exportConfig(odrive)"
+        >
+          {{ odrive }}
+        </button>
       </div>
       <button
         v-for="dash in dashboards"
@@ -51,8 +96,8 @@
         <button
           v-if="
             dash.name !== 'Start' &&
-            dash.name !== 'Tuning' &&
-            dash.name !== 'Wizard'
+              dash.name !== 'Tuning' &&
+              dash.name !== 'Wizard'
           "
           class="close-button"
           v-on:click="deleteDash(dash.id)"
@@ -87,7 +132,6 @@
         :odrives="odrives"
       ></Axis>
     </div>
-
   </div>
 </template>
 
@@ -110,25 +154,25 @@ export default {
     Axis,
     Wizard,
   },
-  data: function () {
+  data: function() {
     return {
       //currentDash: "Start",
       showMenu: false,
       showImport: false,
       showExport: false,
-      menuTop: '0px',
-      importTop: '0px',
-      importLeft: '0px',
-      exportTop: '0px',
-      exportLeft: '0px',
+      menuTop: "0px",
+      importTop: "0px",
+      importLeft: "0px",
+      exportTop: "0px",
+      exportLeft: "0px",
     };
   },
   mounted() {
-    var elem = document.getElementById('header');
-    this.menuTop = elem.offsetHeight + 'px';
+    var elem = document.getElementById("header");
+    this.menuTop = elem.offsetHeight + "px";
   },
   computed: {
-    currentDashName: function () {
+    currentDashName: function() {
       //get the appropriate component name from the currentDash variable
       let comp = {};
       for (const dash of this.dashboards) {
@@ -138,7 +182,7 @@ export default {
       }
       return comp;
     },
-    dash: function () {
+    dash: function() {
       let comp = {};
       for (const dash of this.dashboards) {
         if (dash.name === this.$store.state.currentDash) {
@@ -147,7 +191,7 @@ export default {
       }
       return comp;
     },
-    currentCtrlList: function () {
+    currentCtrlList: function() {
       let comp = {};
       for (const dash of this.dashboards) {
         if (dash.name === this.$store.state.currentDash) {
@@ -156,22 +200,22 @@ export default {
       }
       return comp;
     },
-    axes: function () {
+    axes: function() {
       return this.$store.state.axes;
     },
-    odrives: function () {
+    odrives: function() {
       return this.$store.state.odrives;
     },
-    dashboards: function () {
+    dashboards: function() {
       return this.$store.state.dashboards;
     },
-    sampling: function () {
+    sampling: function() {
       return this.$store.state.sampling;
     },
-    currentDash: function () {
+    currentDash: function() {
       return this.$store.state.currentDash;
     },
-    samplingText: function () {
+    samplingText: function() {
       let ret;
       if (this.$store.state.sampling) {
         ret = "stop sampling";
@@ -195,7 +239,7 @@ export default {
     },
     toggleExport() {
       this.showExport = !this.showExport;
-      this.showImport=  false;
+      this.showImport = false;
     },
     importConfigWrapper() {
       const inputElem = document.getElementById("inputConfig");
@@ -213,14 +257,14 @@ export default {
         let paths = pathsFromTree(config);
         for (const path of paths) {
           let val = config;
-          for(const key of path.split('.')) {
+          for (const key of path.split(".")) {
             val = val[key];
           }
-          putVal(odrive + '.' + path, val);
+          putVal(odrive + "." + path, val);
         }
         console.log("Config imported to odrive " + odrive);
       };
-      reader.addEventListener("load", function (e) {
+      reader.addEventListener("load", function(e) {
         let importString = e.target.result;
         importString = importString.replace(/ Infinity/g, '" Infinity"');
         importString = importString.replace(/ -Infinity/g, '" -Infinity"');
@@ -235,30 +279,27 @@ export default {
 
       let paramTree = this.$store.state.odriveConfigs.params[odrive];
       for (const path of pathsFromTree(paramTree)) {
-        if (path.includes('config.') && !path.includes('mapping')) {
+        if (path.includes("config.") && !path.includes("mapping")) {
           configPaths.push(path);
         }
       }
       for (const path of configPaths) {
-        let keys = path.split('.');
-        let val = String(getVal(odrive + '.' + path));
+        let keys = path.split(".");
+        let val = String(getVal(odrive + "." + path));
         // super ugly! Need a better way to do this and handle tuples in odrive_utils
-        if (val.includes('True')) {
+        if (val.includes("True")) {
           val = true;
-        }
-        else if (val.includes('False')) {
+        } else if (val.includes("False")) {
           val = false;
-        }
-        else if (val.includes('.')) {
+        } else if (val.includes(".")) {
           val = parseFloat(val);
-        }
-        else if (!val.includes(',') && !val.includes('Infinity')){
+        } else if (!val.includes(",") && !val.includes("Infinity")) {
           val = parseInt(val);
         }
         let obj = exportConfig;
-        for (const key of keys.slice(0,-1)) {
+        for (const key of keys.slice(0, -1)) {
           if (!Object.keys(obj).includes(key)) {
-            obj[key] = {}
+            obj[key] = {};
           }
           obj = obj[key];
         }
@@ -269,26 +310,30 @@ export default {
         console.log("found infinity!");
       }
       console.log(typeof exportString);
-      exportString = exportString.replace(/"Infinity"/g, 'Infinity');
-      exportString = exportString.replace(/"-Infinity"/g, '-Infinity');
+      exportString = exportString.replace(/"Infinity"/g, "Infinity");
+      exportString = exportString.replace(/"-Infinity"/g, "-Infinity");
       const blob = new Blob([exportString], {
         type: "application/json",
       });
-      saveAs(blob, odrive + '-config.json');
+      saveAs(blob, odrive + "-config.json");
     },
     calcImportLeft() {
-      let elem = document.getElementById('menu');
-      this.importLeft = elem.offsetWidth + 'px';
+      let elem = document.getElementById("menu");
+      this.importLeft = elem.offsetWidth + "px";
     },
     calcImportTop() {
-      this.importTop = document.getElementById('importButton').getBoundingClientRect().top + 'px';
+      this.importTop =
+        document.getElementById("importButton").getBoundingClientRect().top +
+        "px";
     },
     calcExportLeft() {
-      let elem = document.getElementById('menu')
-      this.exportLeft = elem.offsetWidth + 'px';
+      let elem = document.getElementById("menu");
+      this.exportLeft = elem.offsetWidth + "px";
     },
     calcExportTop() {
-      this.exportTop = document.getElementById('exportButton').getBoundingClientRect().top + 'px';
+      this.exportTop =
+        document.getElementById("exportButton").getBoundingClientRect().top +
+        "px";
     },
     changeDash(dashName) {
       console.log(dashName);
@@ -347,7 +392,7 @@ export default {
           }
         }
       };
-      reader.addEventListener("load", function (e) {
+      reader.addEventListener("load", function(e) {
         addImportedDash(JSON.parse(e.target.result));
       });
       reader.readAsText(file);
@@ -413,14 +458,16 @@ export default {
     this.$store.dispatch("setServerAddress", "http://127.0.0.1:5000");
 
     // to allow running as web app
-    if (window.ipcRenderer != undefined) {
-      window.ipcRenderer.on("server-stdout", (event, arg) => {
-        this.$store.commit("logServerMessage", arg);
+    if (window.odriveElectron) {
+      window.odriveElectron.onServerStdout((data) => {
+        this.$store.commit("logServerMessage", data);
       });
-      window.ipcRenderer.on("server-stderr", (event, arg) => {
-        this.$store.commit("logServerMessage", arg);
+
+      window.odriveElectron.onServerStderr((data) => {
+        this.$store.commit("logServerMessage", data);
       });
-      window.ipcRenderer.send("start-server");
+
+      window.odriveElectron.startServer();
     }
   },
 };

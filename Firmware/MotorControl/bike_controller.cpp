@@ -34,9 +34,9 @@ This should be done once to configure it:
     odrv0.reboot()
 */
 
-void BikeController::start_bike_controller(void) {
-    // Any startup stuff we need to do goes here. it could be configuring the axes / motor controllers
-
+/*
+Note Motor config has been removed from here as it should persist on the O-Drive
+This should be done once to configure it:
     // Set Limits
     pedalAxis_->motor_.config_.current_lim = 5.0f;          // Amps
     pedalAxis_->controller_.config_.vel_limit = 25.0f;      // turns/s
@@ -44,25 +44,25 @@ void BikeController::start_bike_controller(void) {
     pedalAxis_->motor_.config_.pole_pairs = 7.0f;
     pedalAxis_->motor_.config_.torque_constant = 0.05907f;  // 8.27/kv = 8.27/140
     pedalAxis_->motor_.config_.motor_type = ODriveIntf::MotorIntf::MOTOR_TYPE_HIGH_CURRENT;
+    pedalAxis_->controller_.config_.control_mode = ODriveIntf::ControllerIntf::CONTROL_MODE_TORQUE_CONTROL;
+    pedalAxis_->controller_.config_.input_mode = ODriveIntf::ControllerIntf::INPUT_MODE_PASSTHROUGH;
 
-#ifndef BIKE_SINGLE_MOTOR_TEST
+    // These will need to be changed for the rear-hub motor
     driveAxis_->motor_.config_.current_lim = 5.0f;          // Amps
     driveAxis_->controller_.config_.vel_limit = 25.0f;      // turns/s
     driveAxis_->motor_.config_.calibration_current = 2.0f;  // Amps
     driveAxis_->motor_.config_.pole_pairs = 7.0f;
     driveAxis_->motor_.config_.torque_constant = 0.05907f;  // 8.27/kv = 8.27/140
     driveAxis_->motor_.config_.motor_type = ODriveIntf::MotorIntf::MOTOR_TYPE_HIGH_CURRENT;
-#endif
 
-    // Motor / Control Config
-
-    pedalAxis_->controller_.config_.control_mode = ODriveIntf::ControllerIntf::CONTROL_MODE_TORQUE_CONTROL;
-    pedalAxis_->controller_.config_.input_mode = ODriveIntf::ControllerIntf::INPUT_MODE_PASSTHROUGH;
-
-#ifndef BIKE_SINGLE_MOTOR_TEST
     driveAxis_->controller_.config_.control_mode = ODriveIntf::ControllerIntf::CONTROL_MODE_TORQUE_CONTROL;
     driveAxis_->controller_.config_.input_mode = ODriveIntf::ControllerIntf::INPUT_MODE_PASSTHROUGH;
-#endif
+
+    odrv0.save_configuration()
+
+*/
+void BikeController::start_bike_controller(void) {
+    // Any startup stuff we need to do goes here. it could be configuring the axes / motor controllers
 
     target_input_output_gear_ratio_ =
         get_fixed_gear(currentGear_);

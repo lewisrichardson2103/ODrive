@@ -10,10 +10,12 @@
     "preelectron:build": "electron-icon-builder --input=./public/icon.png --output=build --flatten && npm run enumGenerate",
     "electron:build": "vue-cli-service electron:build",
     "preelectron:serve": "npm run enumGenerate",
-    "electron:serve": "vue-cli-service electron:serve",
+    "electron:serve": "node --openssl-legacy-provider ./node_modules/@vue/cli-service/bin/vue-cli-service.js electron:serve",
     "postinstall": "electron-builder install-app-deps",
     "postuninstall": "electron-builder install-app-deps",
-    "electron:generate-icons": "electron-icon-builder --input=./public/icon.png --output=build --flatten"
+    "electron:generate-icons": "electron-icon-builder --input=./public/icon.png --output=build --flatten",
+    "preserve": "npm run enumGenerate",
+    "prebuild": "npm run enumGenerate"
   },
   "main": "background.js",
   "dependencies": {

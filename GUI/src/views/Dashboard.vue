@@ -24,7 +24,7 @@
             :key="index + '-control'"
             :path="control.path"
             :name="control.name"
-            :options="control.options"
+            :options="getEnumOptions(control.path) || control.options"
             :odrives="odrives"
             :dashID="dash.id"
           />
@@ -43,7 +43,7 @@
             :odrives="odrives"
             :initVal="action.val"
             :dashID="dash.id"
-            :options="action.options"
+            :options="getEnumOptions(action.path) || action.options"
           />
         </template>
         <div class="add-button card" @click="addComponent('action')">Add Action</div>
@@ -76,7 +76,8 @@ import CtrlSlider from "../components/controls/CtrlSlider.vue";
 import CtrlEnum from "../components/controls/CtrlEnum.vue";
 import Plot from "../components/plots/Plot.vue";
 import Action from "../components/actions/Action.vue";
-import ActionEnum from "../components/actions/ActionEnum.vue"
+import ActionEnum from "../components/actions/ActionEnum.vue";
+import generatedEnums from "../assets/odriveEnums.json";
 import { JSONView } from "vue-json-component";
 import { v4 as uuidv4 } from "uuid";
 
@@ -93,227 +94,57 @@ let plotColors = [
   "#17becf", // cyan
 ];
 
-let odriveEnums = {
-  // axis requested state
-  requested_state: [
-    {
-      text: "Undefined",
-      value: 0,
-    },
-    {
-      text: "Idle",
-      value: 1,
-    },
-    {
-      text: "Startup Sequence",
-      value: 2,
-    },
-    {
-      text: "Full Calibration Sequence",
-      value: 3,
-    },
-    {
-      text: "Motor Calibration",
-      value: 4,
-    },
-    {
-      text: "Sensorless Control",
-      value: 5,
-    },
-    {
-      text: "Encoder Index Search",
-      value: 6,
-    },
-    {
-      text: "Encoder Offset Calibration",
-      value: 7,
-    },
-    {
-      text: "Closed Loop Control",
-      value: 8,
-    },
-    {
-      text: "Lockin Spin",
-      value: 9,
-    },
-    {
-      text: "Encoder Direction Find",
-      value: 10,
-    },
-    {
-      text: "Homing",
-      value: 11,
-    },
-    {
-      text: "Encoder Hall Polarity Calibration",
-      value: 12,
-    },
-    {
-      text: "Encoder Hall Phase Calibration",
-      value: 13,
-    }
-  ],
-  current_state: [
-    {
-      text: "Undefined",
-      value: 0,
-    },
-    {
-      text: "Idle",
-      value: 1,
-    },
-    {
-      text: "Startup Sequence",
-      value: 2,
-    },
-    {
-      text: "Full Calibration Sequence",
-      value: 3,
-    },
-    {
-      text: "Motor Calibration",
-      value: 4,
-    },
-    {
-      text: "Sensorless Control",
-      value: 5,
-    },
-    {
-      text: "Encoder Index Search",
-      value: 6,
-    },
-    {
-      text: "Encoder Offset Calibration",
-      value: 7,
-    },
-    {
-      text: "Closed Loop Control",
-      value: 8,
-    },
-    {
-      text: "Lockin Spin",
-      value: 9,
-    },
-    {
-      text: "Encoder Direction Find",
-      value: 10,
-    },
-    {
-      text: "Homing",
-      value: 11,
-    },
-    {
-      text: "Encoder Hall Polarity Calibration",
-      value: 12,
-    },
-    {
-      text: "Encoder Hall Phase Calibration",
-      value: 13,
-    }
-  ],
-  // encoder mode
-  mode: [
-    {
-      text: "Incremental",
-      value: 0,
-    },
-    {
-      text: "Hall Effect",
-      value: 1,
-    },
-    {
-      text: "Sine Cosine",
-      value:  2,
-    },
-    {
-      text: "CUI Absolute",
-      value: 256,
-    },
-    {
-      text: "AMS Absolute",
-      value: 257,
-    },
-    {
-      text: "AEAT Absolute",
-      value: 258,
-    },
-    {
-      text: "RLS Absolute",
-      value: 259,
-    },
-  ],
-  // motor type
-  motor_type: [
-    {
-      text: "High Current",
-      value: 0,
-    },
-    {
-      text: "Gimbal",
-      value: 2,
-    },
-    {
-      text: "Induction",
-      value: 3,
-    },
-  ],
-  // controller control mode
-  control_mode: [
-    {
-      text: "Voltage Control",
-      value: 0,
-    },
-    {
-      text: "Torque Control",
-      value: 1,
-    },
-    {
-      text: "Velocity Control",
-      value: 2,
-    },
-    {
-      text: "Position Control",
-      value: 3,
-    },
-  ],
-  input_mode: [
-    {
-      text: "Inactive",
-      value: 0
-    },
-    {
-      text: "Passthrough",
-      value: 1
-    },
-    {
-      text: "Velocity Ramp",
-      value: 2
-    },
-    {
-      text: "Position Filter",
-      value: 3
-    },
-    {
-      text: "Mix Channels",
-      value: 4
-    },
-    {
-      text: "Trapezoidal Trajectory",
-      value: 5
-    },
-    {
-      text: "Torque Ramp",
-      value: 6
-    },
-    {
-      text: "Mirror",
-      value: 7
-    },
-    {
-      text: "Tuning",
-      value: 8
-    }
-  ]
+// Match enum types by their complete device-relative property path.
+// Several unrelated properties share names such as "mode" and "current_state".
+const enumPrefixes = {
+  "bike_controller.current_state": "BIKE_STATE_",
+  "bike_controller.requested_state": "BIKE_STATE_",
+  "bike_controller.mode": "BIKE_MODE_",
+
+  "axis0.current_state": "AXIS_STATE_",
+  "axis0.requested_state": "AXIS_STATE_",
+  "axis1.current_state": "AXIS_STATE_",
+  "axis1.requested_state": "AXIS_STATE_",
+
+  "axis0.encoder.config.mode": "ENCODER_MODE_",
+  "axis1.encoder.config.mode": "ENCODER_MODE_",
+
+  "axis0.motor.config.motor_type": "MOTOR_TYPE_",
+  "axis1.motor.config.motor_type": "MOTOR_TYPE_",
+
+  "axis0.controller.config.control_mode": "CONTROL_MODE_",
+  "axis1.controller.config.control_mode": "CONTROL_MODE_",
+  "axis0.controller.config.input_mode": "INPUT_MODE_",
+  "axis1.controller.config.input_mode": "INPUT_MODE_",
+};
+
+// json-view paths can contain the "odrives" root, whereas existing
+// dashboard definitions commonly begin directly with "odrive0".
+function getRelativePath(path) {
+  if (typeof path !== "string") return "";
+  return path
+    .replace(/^odrives\./, "")
+    .replace(/^odrive\d+\./, "");
+}
+
+function getEnumOptions(path) {
+  const prefix = enumPrefixes[getRelativePath(path)];
+  if (!prefix) return null;
+
+  const options = Object.entries(generatedEnums)
+    .filter(([name, value]) =>
+      name.startsWith(prefix) && Number.isFinite(value)
+    )
+    .map(([name, value]) => ({
+      text: name.slice(prefix.length)
+        .toLowerCase()
+        .replace(/_/g, " ")
+        .replace(/\b\w/g, char => char.toUpperCase()),
+      value,
+    }))
+    .sort((a, b) => a.value - b.value);
+
+  return options.length > 0 ? options : null;
 }
 
 export default {
@@ -339,6 +170,7 @@ export default {
     };
   },
   methods: {
+    getEnumOptions,
     deleteAction(e) {
       this.$emit("delete-action", e);
       console.log(e);
@@ -396,12 +228,13 @@ export default {
               });
               //this.$store.commit("addSampledProperty", e.path);
               break;
-            case "number":
-              if (Object.keys(odriveEnums).includes(e.key)){
+            case "number": {
+              const options = getEnumOptions(e.path);
+              if (options) {
                 this.dash.controls.push({
                   controlType: "CtrlEnum",
                   path: e.path,
-                  options: odriveEnums[e.key],
+                  options,
                 })
               }
               else {
@@ -412,6 +245,7 @@ export default {
               }
               //this.$store.commit("addSampledProperty", e.path);
               break;
+            }
             case "string":
               this.dash.controls.push({
                 controlType: "CtrlFunction",
@@ -450,12 +284,13 @@ export default {
             // add an action to the current dash
             let id = uuidv4();
             console.log("action, key = " + e.key);
-            if (Object.keys(odriveEnums).includes(e.key)){
+            const options = getEnumOptions(e.path);
+            if (options) {
               this.dash.actions.push({
                 actionType: "ActionEnum",
                 id: id,
                 path: e.path,
-                options: odriveEnums[e.key],
+                options,
               })
             }
             else {
