@@ -673,6 +673,21 @@ interfaces:
             type: float32
             doc: |
               When to allow full negative torque against the rider. Linked to crank_torque_cutoff_rpm
+      power_monitor:
+        c_is_class: False
+        attributes:
+          bus_voltage: readonly float32
+          battery_current: readonly float32
+          battery_power: readonly float32
+
+          pedal_electrical_power: readonly float32
+          wheel_electrical_power: readonly float32
+
+          pedal_mechanical_power: readonly float32
+          wheel_mechanical_power: readonly float32
+
+          brake_resistor_power: readonly float32
+          power_balance_error: readonly float32
       task_times:
         c_is_class: False
         attributes:

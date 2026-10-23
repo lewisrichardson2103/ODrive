@@ -569,7 +569,7 @@ static void rtos_main(void*) {
         axes[i].start_thread();
     }
 
-    odrv.bike_controller_.SetAxes(&axes[0], &axes[1]);
+    odrv.bike_controller_.SetAxes(&odrv, &axes[0], &axes[1]);
 
     odrv.system_stats_.fully_booted = true;
 

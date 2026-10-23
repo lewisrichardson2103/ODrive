@@ -9,11 +9,13 @@ class BikeController;
 
 #define BIKE_SINGLE_MOTOR_TEST
 
+class ODrive;
+
 class BikeController : public ODriveIntf::BikeControllerIntf {
    public:
     BikeController();
 
-    void SetAxes(Axis* pedalAxis, Axis* driveAxis);
+    void SetAxes(ODrive* odrive, Axis* pedalAxis, Axis* driveAxis);
     void run_control_loop(void);
 
     inline float get_fixed_gear(uint32_t idx) const {
@@ -131,10 +133,34 @@ class BikeController : public ODriveIntf::BikeControllerIntf {
     Config_t config_;
     TaskTimes task_times_;
 
+   public:  // Power management
+    struct PowerMonitor_t {
+        // DC Bus
+        float bus_voltage = 0.0f;      // V
+        float battery_current = 0.0f;  // A, Estimated
+        float battery_power = 0.0f;    // W, + discharge
+
+        // Individual motor electrical power
+        float pedal_electrical_power = 0.0f;  // W
+        float wheel_electrical_power = 0.0f;  // W
+
+        // Mechanical power at the pedal and wheel
+        float pedal_mechanical_power = 0.0f;  // W
+        float wheel_mechanical_power = 0.0f;  // W
+
+        // Brake resistor power
+        float brake_resistor_power = 0.0f;  // W
+
+        // Diagnostic
+        float power_balance_error = 0.0f;  // W
+    };
+    PowerMonitor_t power_monitor_;
+
    private:
     void start_bike_controller(void);
 
     void update_measurements(float delta_t);
+    void update_power_monitor();
     void update_crank_speed(float delta_t);
 #ifdef BIKE_SINGLE_MOTOR_TEST
     void update_simulated_wheel(float delta_t);
@@ -181,6 +207,7 @@ class BikeController : public ODriveIntf::BikeControllerIntf {
 
     Axis* pedalAxis_ = nullptr;
     Axis* driveAxis_ = nullptr;
+    ODrive* odrive_ = nullptr;
 };
 
 #endif

@@ -1,5 +1,6 @@
 #include "bike_controller.hpp"
 
+#include "odrive_main.h"
 #include "utils.hpp"
 
 static constexpr float TWO_PI = 6.28318530718f;
@@ -10,7 +11,8 @@ static constexpr float MICRO_TO_SEC = 1.0e-6f;
 BikeController::BikeController() {
 }
 
-void BikeController::SetAxes(Axis* pedalAxis, Axis* driveAxis) {
+void BikeController::SetAxes(ODrive* odrive, Axis* pedalAxis, Axis* driveAxis) {
+    odrive_ = odrive;
     pedalAxis_ = pedalAxis;
 #ifdef BIKE_SINGLE_MOTOR_TEST
     driveAxis_ = nullptr;
@@ -81,6 +83,8 @@ void BikeController::update_measurements(float delta_t) {
     update_wheel_speed(delta_t);
     update_wheel_motor_torque();
 #endif
+
+    update_power_monitor();
 }
 
 #ifdef BIKE_SINGLE_MOTOR_TEST
@@ -360,7 +364,9 @@ void BikeController::update_values(void) {
 
 void BikeController::run_control_loop(void) {
 #ifdef BIKE_SINGLE_MOTOR_TEST
-    if (pedalAxis_ == nullptr) return;
+    if (odrive_ == nullptr || pedalAxis_ == nullptr) {
+        return;
+    }
 #else
     if (pedalAxis_ == nullptr || driveAxis_ == nullptr) return;
 #endif
@@ -520,6 +526,63 @@ void BikeController::run_control_loop(void) {
 
 float BikeController::get_cadence_rpm() const {
     return crank_speed_estimate_ * RAD_PER_SEC_TO_RPM;
+}
+
+void BikeController::update_power_monitor() {
+    auto& p = power_monitor_;
+
+    p.bus_voltage = odrive_->vbus_voltage_;
+
+    // ODrive reports estimated current at the DC supply.
+    p.battery_current = odrive_->ibus_;
+
+    p.battery_power =
+        p.bus_voltage * p.battery_current;
+
+    // Motor DC electrical power:
+    // positive = drawn from bus
+    // negative = returned to bus
+    p.pedal_electrical_power =
+        pedalAxis_->motor_.is_armed_
+            ? p.bus_voltage * pedalAxis_->motor_.I_bus_
+            : 0.0f;
+
+#ifndef BIKE_SINGLE_MOTOR_TEST
+    p.wheel_electrical_power =
+        driveAxis_->motor_.is_armed_
+            ? p.bus_voltage * driveAxis_->motor_.I_bus_
+            : 0.0f;
+#else
+    // Simulated wheel does not consume real electrical power.
+    p.wheel_electrical_power = 0.0f;
+#endif
+
+    // Rider power is mechanical input at the crank.
+    p.pedal_mechanical_power =
+        rider_torque_estimate_ * crank_speed_estimate_;
+
+#ifndef BIKE_SINGLE_MOTOR_TEST
+    // Signed wheel mechanical power:
+    // positive = wheel driven
+    // negative = braking
+    p.wheel_mechanical_power =
+        wheel_motor_torque_ * wheel_speed_estimate_;
+#else
+    // The simulated wheel is a virtual mechanical load.
+    p.wheel_mechanical_power =
+        wheel_torque_command_ * wheel_speed_estimate_;
+#endif
+
+    // Brake resistor current is calculated by ODrive.
+    p.brake_resistor_power =
+        p.bus_voltage * odrive_->brake_resistor_current_;
+
+    // Diagnostic: sum of DC power flows.
+    p.power_balance_error =
+        p.pedal_electrical_power +
+        p.wheel_electrical_power +
+        p.brake_resistor_power -
+        p.battery_power;
 }
 
 void BikeController::update_crank_speed(float delta_t) {
