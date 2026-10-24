@@ -65,6 +65,13 @@ This should be done once to configure it:
 */
 void BikeController::start_bike_controller(void) {
     // Any startup stuff we need to do goes here. it could be configuring the axes / motor controllers
+    pedalAxis_->controller_.config_.control_mode = ODriveIntf::ControllerIntf::CONTROL_MODE_TORQUE_CONTROL;
+    pedalAxis_->controller_.config_.input_mode = ODriveIntf::ControllerIntf::INPUT_MODE_PASSTHROUGH;
+
+#ifndef BIKE_SINGLE_MOTOR_TEST
+    driveAxis_->controller_.config_.control_mode = ODriveIntf::ControllerIntf::CONTROL_MODE_TORQUE_CONTROL;
+    driveAxis_->controller_.config_.input_mode = ODriveIntf::ControllerIntf::INPUT_MODE_PASSTHROUGH;
+#endif
 
     target_input_output_gear_ratio_ =
         get_fixed_gear(currentGear_);
@@ -182,8 +189,13 @@ void BikeController::update_virtual_drivetrain_pi(float delta_t) {
             candidate_torque > virtual_torque_max_ &&
             sync_speed_error_ > 0.0f;
 
+        const bool pushing_against_power_limit =
+            power_limit_factor_ < 0.999f &&
+            sync_speed_error_ > 0.0f;
+
         if (!pushing_below_lower_limit &&
-            !pushing_above_upper_limit) {
+            !pushing_above_upper_limit &&
+            !pushing_against_power_limit) {
             sync_integral_ =
                 candidate_integral;
         }
@@ -237,6 +249,134 @@ void BikeController::limit_virtual_torque(void) {
     virtual_drivetrain_torque_limited =
         virtual_torque_request_ >
         virtual_torque_max_;
+}
+
+void BikeController::apply_power_limits() {
+    reset_power_limits();
+
+    if (!config_.enable_power_limits ||
+        current_state_ != BIKE_STATE_CONTROL) {
+        return;
+    }
+
+    const float voltage = power_monitor_.bus_voltage;
+
+    if (!std::isfinite(voltage) || voltage <= 0.0f ||
+        !std::isfinite(crank_speed_estimate_) ||
+        !std::isfinite(wheel_speed_estimate_) ||
+        !std::isfinite(crank_torque_command_) ||
+        !std::isfinite(wheel_torque_command_)) {
+        // Invalid inputs must never permit an
+        // uncontrolled torque request.
+        crank_torque_command_ = 0.0f;
+        wheel_torque_command_ = 0.0f;
+        power_limit_factor_ = 0.0f;
+        return;
+    }
+
+    const float discharge_budget = std::max(
+        0.0f, config_.max_battery_discharge_power);
+
+    const float charge_budget = std::max(
+        0.0f, config_.max_battery_charge_power);
+
+    const float brake_budget = std::max(
+        0.0f, config_.max_brake_resistor_power);
+
+    const float efficiency = std::clamp(
+        config_.drive_efficiency_estimate,
+        0.1f, 1.0f);
+
+    // Conservative potential mechanical energy
+    // absorbed from the rider.
+    const float generator_power = std::max(
+        0.0f,
+        -crank_torque_command_ *
+            crank_speed_estimate_);
+
+    generator_absorption_power_request_ =
+        generator_power;
+
+    // Wheel mechanical demand. In single-motor
+    // mode this is still virtual, not real power.
+    const float wheel_mechanical_power = std::max(
+        0.0f,
+        wheel_torque_command_ *
+            wheel_speed_estimate_);
+
+    float wheel_electrical_demand = 0.0f;
+
+#ifndef BIKE_SINGLE_MOTOR_TEST
+    wheel_electrical_demand =
+        wheel_mechanical_power / efficiency;
+#endif
+
+    // Battery supplies any wheel demand that
+    // cannot be covered by recovered generator
+    // power. Here generator recovery is assumed
+    // to be zero for a conservative discharge
+    // estimate.
+    battery_discharge_power_request_ =
+        wheel_electrical_demand;
+
+    // First, limit battery discharge.
+    float discharge_factor = 1.0f;
+
+    if (wheel_electrical_demand > discharge_budget &&
+        wheel_electrical_demand > 0.0f) {
+        discharge_factor =
+            discharge_budget / wheel_electrical_demand;
+
+        battery_discharge_limited_ = true;
+    }
+
+    // Apply the discharge factor to the estimated
+    // wheel consumption for the regen sink budget.
+    //
+    // In two-motor operation, the wheel motor can
+    // consume generated power directly.
+    // In single-motor test mode, this is zero.
+    const float wheel_sink_power =
+        wheel_electrical_demand * discharge_factor;
+
+    available_regen_sink_power_ =
+        charge_budget +
+        brake_budget +
+        wheel_sink_power;
+
+    // Do not allow assumed pedal generation to
+    // exceed available electrical sinks.
+    float regen_factor = 1.0f;
+
+    if (generator_power > available_regen_sink_power_ &&
+        generator_power > 0.0f) {
+        regen_factor =
+            available_regen_sink_power_ /
+            generator_power;
+
+        generator_power_limited_ = true;
+    }
+
+    // Keep the crank/wheel virtual torque
+    // relationship intact.
+    power_limit_factor_ = std::clamp(
+        std::min(discharge_factor, regen_factor),
+        0.0f, 1.0f);
+
+    wheel_torque_command_ *= power_limit_factor_;
+    crank_torque_command_ *= power_limit_factor_;
+}
+
+void BikeController::reset_power_limits() {
+    power_limit_factor_ = 1.0f;
+
+    battery_discharge_power_request_ = 0.0f;
+    generator_absorption_power_request_ = 0.0f;
+
+    available_regen_sink_power_ = 0.0f;
+
+    battery_discharge_limited_ = false;
+    generator_power_limited_ = false;
 }
 
 float BikeController::limit_crank_torque(float requested_torque) const {
@@ -360,6 +500,9 @@ void BikeController::update_values(void) {
     update_virtual_drivetrain_pi(delta_t);
     limit_virtual_torque();
     update_virtual_torque_commands();
+
+    // limit the completed virtual torque pair.
+    apply_power_limits();
 }
 
 void BikeController::run_control_loop(void) {
@@ -882,6 +1025,8 @@ void BikeController::reset_control_state(void) {
     wheel_accel_estimate_ = 0.0f;
     _last_wheel_speed_estimate = 0.0f;
 #endif
+
+    reset_power_limits();
 }
 
 void BikeController::lowpassfilter(float& oldVal, const float& newVal, const float& alpha) {

@@ -79,6 +79,18 @@ class BikeController : public ODriveIntf::BikeControllerIntf {
 
         float crank_torque_cutoff_rpm = 8.0f;
         float crank_torque_full_rpm = 15.0f;
+
+        // power management
+        bool enable_power_limits = true;
+        // Positive battery discharge into the DC bus.
+        float max_battery_discharge_power = 40.0f;  // W
+        // Maximum power allowed back into the battery.
+        // Zero for a bench PSU that cannot absorb regeneration.
+        float max_battery_charge_power = 0.0f;  // W
+        // Conservative continuous resistor power budget.
+        float max_brake_resistor_power = 15.0f;  // W
+        // Conservative wheel-drive efficiency estimate.
+        float drive_efficiency_estimate = 0.70f;
     };
 
     struct TaskTimes {
@@ -156,6 +168,14 @@ class BikeController : public ODriveIntf::BikeControllerIntf {
     };
     PowerMonitor_t power_monitor_;
 
+    // power-limit diagnostics
+    float power_limit_factor_ = 1.0f;
+    float battery_discharge_power_request_ = 0.0f;
+    float generator_absorption_power_request_ = 0.0f;
+    float available_regen_sink_power_ = 0.0f;
+    bool battery_discharge_limited_ = false;
+    bool generator_power_limited_ = false;
+
    private:
     void start_bike_controller(void);
 
@@ -177,6 +197,9 @@ class BikeController : public ODriveIntf::BikeControllerIntf {
 
     void update_virtual_torque_commands(void);
     void update_virtual_drivetrain_gains(void);
+
+    void apply_power_limits();
+    void reset_power_limits();
 
     float limit_crank_torque(float requested_torque) const;
 

@@ -580,6 +580,12 @@ interfaces:
         type: readonly float32
       drivetrain_inertia_gain: readonly float32
       delta_t: readonly float32
+      power_limit_factor: readonly float32
+      battery_discharge_power_request: readonly float32
+      generator_absorption_power_request: readonly float32
+      available_regen_sink_power: readonly float32
+      battery_discharge_limited: readonly bool
+      generator_power_limited: readonly bool
       config:
         c_is_class: False
         attributes:
@@ -673,6 +679,11 @@ interfaces:
             type: float32
             doc: |
               When to allow full negative torque against the rider. Linked to crank_torque_cutoff_rpm
+          enable_power_limits: bool
+          max_battery_discharge_power: float32
+          max_battery_charge_power: float32
+          max_brake_resistor_power: float32
+          drive_efficiency_estimate: float32
       power_monitor:
         c_is_class: False
         attributes:
