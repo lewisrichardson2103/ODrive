@@ -77,8 +77,10 @@ class BikeController : public ODriveIntf::BikeControllerIntf {
 
         float simulated_wheel_load = 0.25f;  // Nm per rad/s - Only used in single motor testing
 
-        float crank_torque_cutoff_rpm = 8.0f;
-        float crank_torque_full_rpm = 15.0f;
+        float crank_reverse_cutoff_rpm = 0.5f;
+        float crank_forward_reengage_rpm = 1.0f;
+        // Fast rider torque estimation
+        float rider_torque_fast_time_constant = 0.05f;
 
         // power management
         bool enable_power_limits = true;
@@ -110,6 +112,8 @@ class BikeController : public ODriveIntf::BikeControllerIntf {
     float rider_torque_estimate_ = 0.0f;
     float rider_torque_gradient_ = 0.0f;
     float rider_power_estimate_ = 0.0f;
+    float rider_torque_fast_estimate_ = 0.0f;
+    float crank_speed_signed_ = 0.0f;  // rad/s
 
     float cadence_error_ = 0.0f;
     float gear_ratio_rate_command_ = 0.0f;
@@ -192,6 +196,7 @@ class BikeController : public ODriveIntf::BikeControllerIntf {
     void update_virtual_drivetrain_pi(float delta_t);
     void update_virtual_torque_authority(void);
     void limit_virtual_torque(void);
+    void update_reverse_protection(void);
 
     void update_assistance_state(void);
 
@@ -227,6 +232,7 @@ class BikeController : public ODriveIntf::BikeControllerIntf {
     float _last_wheel_speed_estimate = 0.0f;
     unsigned long _last_update_time = 0.0;
     bool virtual_drivetrain_torque_limited = false;
+    bool crank_reverse_inhibited_ = false;
 
     Axis* pedalAxis_ = nullptr;
     Axis* driveAxis_ = nullptr;

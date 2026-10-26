@@ -586,6 +586,8 @@ interfaces:
       available_regen_sink_power: readonly float32
       battery_discharge_limited: readonly bool
       generator_power_limited: readonly bool
+      rider_torque_fast_estimate: readonly float32
+      crank_speed_signed: readonly float32
       config:
         c_is_class: False
         attributes:
@@ -670,12 +672,12 @@ interfaces:
           simulated_wheel_load:
             type: float32
             doc: Nm - Only used in single motor testing
-          crank_torque_cutoff_rpm:
+          crank_reverse_cutoff_rpm:
             type: float32
             doc: |
               For slowing down negative torque when the crank comes to rest to ensure the
               pedal never gets driven the wrong way
-          crank_torque_full_rpm:
+          crank_forward_reengage_rpm:
             type: float32
             doc: |
               When to allow full negative torque against the rider. Linked to crank_torque_cutoff_rpm
@@ -684,6 +686,7 @@ interfaces:
           max_battery_charge_power: float32
           max_brake_resistor_power: float32
           drive_efficiency_estimate: float32
+          rider_torque_fast_time_constant: float32
       power_monitor:
         c_is_class: False
         attributes:
