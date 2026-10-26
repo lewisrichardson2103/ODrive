@@ -1002,6 +1002,10 @@ void BikeController::update_bike_state(void) {
             break;
         }
 
+        case BIKE_STATE_TESTING: {
+            current_state_ = BIKE_STATE_TESTING;
+        }
+
         default:
             break;
     }
