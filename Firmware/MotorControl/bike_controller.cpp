@@ -28,9 +28,8 @@ This should be done once to configure it:
     odrv0.axis0.encoder.config.cpr = 16384
     odrv0.axis0.encoder.config.abs_spi_cs_gpio_pin = 3
 
-    odrv0.axis1.encoder.config.mode = ENCODER_MODE_SPI_ABS_AMS
-    odrv0.axis1.encoder.config.cpr = 16384
-    odrv0.axis1.encoder.config.abs_spi_cs_gpio_pin = 4
+    odrv0.axis1.encoder.config.mode = ENCODER_MODE_HALL
+    odrv0.axis1.encoder.config.cpr = 78
 
     odrv0.save_configuration()
     odrv0.reboot()
@@ -53,8 +52,8 @@ This should be done once to configure it:
     driveAxis_->motor_.config_.current_lim = 5.0f;          // Amps
     driveAxis_->controller_.config_.vel_limit = 25.0f;      // turns/s
     driveAxis_->motor_.config_.calibration_current = 2.0f;  // Amps
-    driveAxis_->motor_.config_.pole_pairs = 7.0f;
-    driveAxis_->motor_.config_.torque_constant = 0.05907f;  // 8.27/kv = 8.27/140
+    driveAxis_->motor_.config_.pole_pairs = 13.0f;
+    driveAxis_->motor_.config_.torque_constant = 0.2f;  // 8.27/kv = 8.27/140
     driveAxis_->motor_.config_.motor_type = ODriveIntf::MotorIntf::MOTOR_TYPE_HIGH_CURRENT;
 
     driveAxis_->controller_.config_.control_mode = ODriveIntf::ControllerIntf::CONTROL_MODE_TORQUE_CONTROL;
