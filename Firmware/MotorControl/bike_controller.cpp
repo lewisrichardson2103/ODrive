@@ -254,117 +254,421 @@ void BikeController::limit_virtual_torque(void) {
 void BikeController::apply_power_limits() {
     reset_power_limits();
 
+    // Keep original behaviour when power management
+    // is disabled or the bike is not in CONTROL.
     if (!config_.enable_power_limits ||
         current_state_ != BIKE_STATE_CONTROL) {
         return;
     }
 
-    const float voltage = power_monitor_.bus_voltage;
+    // Stage 3C constants.
+    //
+    // These are approximate loss-estimation margins,
+    // NOT certified upper/lower hardware loss bounds.
+    //
+    // No new persistent configuration is introduced.
+    static constexpr float COPPER_LOSS_LOWER = 0.50f;
+    static constexpr float COPPER_LOSS_UPPER = 1.50f;
 
-    if (!std::isfinite(voltage) || voltage <= 0.0f ||
-        !std::isfinite(crank_speed_estimate_) ||
-        !std::isfinite(wheel_speed_estimate_) ||
-        !std::isfinite(crank_torque_command_) ||
-        !std::isfinite(wheel_torque_command_)) {
-        // Invalid inputs must never permit an
-        // uncontrolled torque request.
+    // Conservative additional torque-dependent
+    // inverter loss allowance, W per amp of |Iq|.
+    // Zero requested current adds no loss allowance.
+    static constexpr float INVERTER_LOSS_UPPER_W_PER_A =
+        0.10f;
+
+    // Number of iterations when solving for the
+    // largest permissible common torque scale.
+    static constexpr int LIMIT_ITERATIONS = 16;
+
+    // Invalid measurements or configurations must
+    // never allow an unrestricted torque request.
+    const auto suppress_torque = [this]() {
         crank_torque_command_ = 0.0f;
         wheel_torque_command_ = 0.0f;
         power_limit_factor_ = 0.0f;
+    };
+
+    // ------------------------------------------------
+    // 1. Validate measurements and configuration
+    // ------------------------------------------------
+
+    if (odrive_ == nullptr || pedalAxis_ == nullptr) {
+        suppress_torque();
         return;
     }
 
-    const float discharge_budget = std::max(
-        0.0f, config_.max_battery_discharge_power);
-
-    const float charge_budget = std::max(
-        0.0f, config_.max_battery_charge_power);
-
-    const float brake_budget = std::max(
-        0.0f, config_.max_brake_resistor_power);
-
-    const float efficiency = std::clamp(
-        config_.drive_efficiency_estimate,
-        0.1f, 1.0f);
-
-    // Conservative potential mechanical energy
-    // absorbed from the rider.
-    const float generator_power = std::max(
-        0.0f,
-        -crank_torque_command_ *
-            crank_speed_estimate_);
-
-    generator_absorption_power_request_ =
-        generator_power;
-
-    // Wheel mechanical demand. In single-motor
-    // mode this is still virtual, not real power.
-    const float wheel_mechanical_power = std::max(
-        0.0f,
-        wheel_torque_command_ *
-            wheel_speed_estimate_);
-
-    float wheel_electrical_demand = 0.0f;
-
 #ifndef BIKE_SINGLE_MOTOR_TEST
-    wheel_electrical_demand =
-        wheel_mechanical_power / efficiency;
+    if (driveAxis_ == nullptr) {
+        suppress_torque();
+        return;
+    }
 #endif
 
-    // Battery supplies any wheel demand that
-    // cannot be covered by recovered generator
-    // power. Here generator recovery is assumed
-    // to be zero for a conservative discharge
-    // estimate.
-    battery_discharge_power_request_ =
-        wheel_electrical_demand;
+    const float voltage = power_monitor_.bus_voltage;
 
-    // First, limit battery discharge.
-    float discharge_factor = 1.0f;
-
-    if (wheel_electrical_demand > discharge_budget &&
-        wheel_electrical_demand > 0.0f) {
-        discharge_factor =
-            discharge_budget / wheel_electrical_demand;
-
-        battery_discharge_limited_ = true;
+    if (!std::isfinite(voltage) || voltage <= 0.0f ||
+        !std::isfinite(crank_torque_command_) ||
+        !std::isfinite(wheel_torque_command_) ||
+        !std::isfinite(config_.max_battery_discharge_power) ||
+        !std::isfinite(config_.max_battery_charge_power) ||
+        !std::isfinite(config_.max_brake_resistor_power)) {
+        suppress_torque();
+        return;
     }
 
-    // Apply the discharge factor to the estimated
-    // wheel consumption for the regen sink budget.
+    // Hardware current limits may legitimately
+    // be infinite, but they must not be NaN.
+    if (std::isnan(odrive_->config_.dc_max_positive_current) ||
+        std::isnan(odrive_->config_.dc_max_negative_current) ||
+        std::isnan(odrive_->config_.max_regen_current)) {
+        suppress_torque();
+        return;
+    }
+
+    // ------------------------------------------------
+    // 2. Calculate pedal motor shaft power and losses
+    // ------------------------------------------------
+
+    const auto pedal_velocity =
+        pedalAxis_->encoder_.vel_estimate_.any();
+
+    const float pedal_ratio =
+        config_.gear_ratio_pedal;
+
+    const float pedal_Kt =
+        pedalAxis_->motor_.config_.torque_constant;
+
+    const float pedal_R =
+        pedalAxis_->motor_.config_.phase_resistance;
+
+    if (!pedal_velocity.has_value() ||
+        !std::isfinite(*pedal_velocity) ||
+        !std::isfinite(pedal_ratio) ||
+        pedal_ratio <= 0.0f ||
+        !std::isfinite(pedal_Kt) ||
+        pedal_Kt <= 0.0f ||
+        !std::isfinite(pedal_R) ||
+        pedal_R <= 0.0f) {
+        suppress_torque();
+        return;
+    }
+
+    // Use the torque that the existing crank
+    // safety function would actually request.
     //
-    // In two-motor operation, the wheel motor can
-    // consume generated power directly.
-    // In single-motor test mode, this is zero.
-    const float wheel_sink_power =
-        wheel_electrical_demand * discharge_factor;
+    // This does not change the 8-15 rpm fade.
+    const float safe_crank_torque =
+        limit_crank_torque(crank_torque_command_);
+
+    const float pedal_motor_torque =
+        safe_crank_torque / pedal_ratio;
+
+    // Encoder velocity is measured in turns/s.
+    const float pedal_motor_speed =
+        *pedal_velocity *
+        TURNS_PER_SEC_TO_RAD_PER_SEC;
+
+    const float pedal_shaft_power =
+        pedal_motor_torque * pedal_motor_speed;
+
+    // Approximate torque-producing current.
+    const float pedal_Iq =
+        pedal_motor_torque / pedal_Kt;
+
+    const float pedal_copper_loss =
+        1.5f * pedal_R * pedal_Iq * pedal_Iq;
+
+    // ------------------------------------------------
+    // 3. Calculate wheel motor shaft power and losses
+    // ------------------------------------------------
+
+    // In single-motor testing, the wheel is virtual.
+    // It must not be counted as a real electrical load.
+    float wheel_shaft_power = 0.0f;
+    float wheel_copper_loss = 0.0f;
+    float wheel_Iq = 0.0f;
+
+#ifndef BIKE_SINGLE_MOTOR_TEST
+
+    const auto wheel_velocity =
+        driveAxis_->encoder_.vel_estimate_.any();
+
+    const float wheel_ratio =
+        config_.gear_ratio_drive;
+
+    const float wheel_Kt =
+        driveAxis_->motor_.config_.torque_constant;
+
+    const float wheel_R =
+        driveAxis_->motor_.config_.phase_resistance;
+
+    if (!wheel_velocity.has_value() ||
+        !std::isfinite(*wheel_velocity) ||
+        !std::isfinite(wheel_ratio) ||
+        wheel_ratio <= 0.0f ||
+        !std::isfinite(wheel_Kt) ||
+        wheel_Kt <= 0.0f ||
+        !std::isfinite(wheel_R) ||
+        wheel_R <= 0.0f) {
+        suppress_torque();
+        return;
+    }
+
+    const float wheel_motor_torque =
+        wheel_torque_command_ / wheel_ratio;
+
+    const float wheel_motor_speed =
+        *wheel_velocity *
+        TURNS_PER_SEC_TO_RAD_PER_SEC;
+
+    wheel_shaft_power =
+        wheel_motor_torque * wheel_motor_speed;
+
+    wheel_Iq =
+        wheel_motor_torque / wheel_Kt;
+
+    wheel_copper_loss =
+        1.5f * wheel_R * wheel_Iq * wheel_Iq;
+
+#endif
+
+    // ------------------------------------------------
+    // 4. Combine both motors into one DC power model
+    // ------------------------------------------------
+
+    const float total_shaft_power =
+        pedal_shaft_power +
+        wheel_shaft_power;
+
+    const float total_copper_loss =
+        pedal_copper_loss +
+        wheel_copper_loss;
+
+    const float total_abs_Iq =
+        std::abs(pedal_Iq) +
+        std::abs(wheel_Iq);
+
+    // Common torque scaling:
+    //
+    // Mechanical shaft power scales with s.
+    // Copper loss scales approximately with s^2.
+    // Additional inverter loss scales with |Iq|,
+    // and therefore approximately with s.
+    //
+    // Positive = power drawn from DC bus.
+    // Negative = power returned to DC bus.
+
+    const auto power_upper = [&](float s) -> float {
+        return total_shaft_power * s +
+               COPPER_LOSS_UPPER *
+                   total_copper_loss * s * s +
+               INVERTER_LOSS_UPPER_W_PER_A *
+                   total_abs_Iq * s;
+    };
+
+    const auto power_lower = [&](float s) -> float {
+        return total_shaft_power * s +
+               COPPER_LOSS_LOWER *
+                   total_copper_loss * s * s;
+    };
+
+    // Keep existing telemetry semantics:
+    //
+    // generator_absorption_power_request:
+    // Mechanical power absorbed by pedal generator.
+    //
+    // battery_discharge_power_request:
+    // Conservative unscaled net DC discharge request.
+    generator_absorption_power_request_ =
+        std::max(0.0f, -pedal_shaft_power);
+
+    battery_discharge_power_request_ =
+        std::max(0.0f, power_upper(1.0f));
+
+    if (!std::isfinite(total_shaft_power) ||
+        !std::isfinite(total_copper_loss) ||
+        !std::isfinite(total_abs_Iq) ||
+        !std::isfinite(power_upper(1.0f)) ||
+        !std::isfinite(power_lower(1.0f))) {
+        suppress_torque();
+        return;
+    }
+
+    // ------------------------------------------------
+    // 5. Battery discharge power budget
+    // ------------------------------------------------
+
+    const float configured_discharge_budget =
+        std::max(
+            0.0f,
+            config_.max_battery_discharge_power);
+
+    const float hardware_discharge_current =
+        std::max(
+            0.0f,
+            odrive_->config_.dc_max_positive_current);
+
+    const float discharge_budget =
+        std::min(
+            configured_discharge_budget,
+            voltage * hardware_discharge_current);
+
+    // ------------------------------------------------
+    // 6. Battery charging power budget
+    // ------------------------------------------------
+
+    const float configured_charge_budget =
+        std::max(
+            0.0f,
+            config_.max_battery_charge_power);
+
+    // max_regen_current is a nonnegative magnitude.
+    const float regen_current_allowed =
+        std::max(
+            0.0f,
+            odrive_->config_.max_regen_current);
+
+    // dc_max_negative_current uses a negative sign
+    // to represent current entering the supply.
+    const float negative_bus_current_allowed =
+        std::max(
+            0.0f,
+            -odrive_->config_.dc_max_negative_current);
+
+    const float charge_current_budget =
+        std::min(
+            regen_current_allowed,
+            negative_bus_current_allowed);
+
+    const float charge_budget =
+        std::min(
+            configured_charge_budget,
+            voltage * charge_current_budget);
+
+    // ------------------------------------------------
+    // 7. Brake resistor absorption budget
+    // ------------------------------------------------
+
+    float brake_budget = 0.0f;
+
+    if (odrive_->config_.enable_brake_resistor &&
+        odrive_->brake_resistor_armed_) {
+        const float brake_resistance =
+            odrive_->config_.brake_resistance;
+
+        if (!std::isfinite(brake_resistance) ||
+            brake_resistance <= 0.0f) {
+            suppress_torque();
+            return;
+        }
+
+        const float configured_brake_budget =
+            std::max(
+                0.0f,
+                config_.max_brake_resistor_power);
+
+        // Existing low-level ODrive firmware caps
+        // brake resistor PWM at 95% duty.
+        //
+        // Average resistor power is approximately:
+        // duty * Vbus^2 / resistance.
+        const float electrical_brake_capacity =
+            0.95f *
+            voltage * voltage /
+            brake_resistance;
+
+        brake_budget =
+            std::min(
+                configured_brake_budget,
+                electrical_brake_capacity);
+    }
+
+    // Net regeneration may be absorbed by the
+    // battery and/or the brake resistor.
+    const float regen_sink_budget =
+        charge_budget + brake_budget;
 
     available_regen_sink_power_ =
-        charge_budget +
-        brake_budget +
-        wheel_sink_power;
+        regen_sink_budget;
 
-    // Do not allow assumed pedal generation to
-    // exceed available electrical sinks.
-    float regen_factor = 1.0f;
-
-    if (generator_power > available_regen_sink_power_ &&
-        generator_power > 0.0f) {
-        regen_factor =
-            available_regen_sink_power_ /
-            generator_power;
-
-        generator_power_limited_ = true;
+    if (!std::isfinite(discharge_budget) ||
+        !std::isfinite(regen_sink_budget)) {
+        suppress_torque();
+        return;
     }
 
-    // Keep the crank/wheel virtual torque
-    // relationship intact.
-    power_limit_factor_ = std::clamp(
-        std::min(discharge_factor, regen_factor),
-        0.0f, 1.0f);
+    // ------------------------------------------------
+    // 8. Find the battery-discharge torque limit
+    // ------------------------------------------------
 
-    wheel_torque_command_ *= power_limit_factor_;
+    float scale = 1.0f;
+
+    if (power_upper(scale) > discharge_budget) {
+        battery_discharge_limited_ = true;
+
+        // At scale = 0, this model has no
+        // torque-dependent electrical demand.
+        //
+        // Find the largest scale satisfying
+        // the discharge budget.
+        float low = 0.0f;
+        float high = 1.0f;
+
+        for (int i = 0; i < LIMIT_ITERATIONS; ++i) {
+            const float mid =
+                0.5f * (low + high);
+
+            if (power_upper(mid) <= discharge_budget) {
+                low = mid;
+            } else {
+                high = mid;
+            }
+        }
+
+        scale = low;
+    }
+
+    // ------------------------------------------------
+    // 9. Find the regeneration torque limit
+    // ------------------------------------------------
+
+    // Check the already discharge-limited torque
+    // pair against the available regeneration sinks.
+    //
+    // Reducing the common torque scale tends
+    // towards zero generated mechanical power.
+    //
+    // At zero scale, the torque-dependent model
+    // has zero net electrical power.
+    if (power_lower(scale) < -regen_sink_budget) {
+        generator_power_limited_ = true;
+
+        float low = 0.0f;
+        float high = scale;
+
+        for (int i = 0; i < LIMIT_ITERATIONS; ++i) {
+            const float mid =
+                0.5f * (low + high);
+
+            if (power_lower(mid) >= -regen_sink_budget) {
+                low = mid;
+            } else {
+                high = mid;
+            }
+        }
+
+        scale = low;
+    }
+
+    // ------------------------------------------------
+    // 10. Apply common torque scaling
+    // ------------------------------------------------
+
+    power_limit_factor_ =
+        std::clamp(scale, 0.0f, 1.0f);
+
     crank_torque_command_ *= power_limit_factor_;
+    wheel_torque_command_ *= power_limit_factor_;
 }
 
 void BikeController::reset_power_limits() {
