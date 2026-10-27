@@ -229,7 +229,7 @@ void BikeController::update_virtual_torque_authority(void) {
 
     virtual_torque_max_ =
         ((1.0f + assist_ratio) *
-         rider_torque_fast_estimate_) /
+         rider_torque_estimate_) /
         input_output_gear_ratio_;
 }
 
@@ -717,10 +717,24 @@ void BikeController::update_virtual_torque_commands(void) {
     wheel_torque_command_ =
         virtual_torque_limited_;
 
-    crank_torque_command_ =
-        -human_fraction_ *
+    // Maximum available crank torque, accounting for
+    // motor current limits and the physical gear ratio.
+    const float max_crank_torque =
+        pedalAxis_->motor_.max_available_torque() *
+        config_.gear_ratio_pedal;
+
+    // Crank resistance is driven by the full PI request,
+    // rather than the rider-limited wheel torque.
+    const float requested_crank_resistance =
+        human_fraction_ *
         input_output_gear_ratio_ *
-        virtual_torque_limited_;
+        std::max(0.0f, virtual_torque_request_);
+
+    // Limit resistance to the crank motor's capability.
+    crank_torque_command_ =
+        -std::min(
+            std::max(0.0f, max_crank_torque),
+            requested_crank_resistance);
 }
 
 void BikeController::update_virtual_drivetrain_gains(void) {
@@ -1190,24 +1204,6 @@ void BikeController::update_rider_torques(float delta_t) {
     rider_torque_estimate_ =
         std::max(0.0f, rider_torque_estimate_);
 
-    // Faster estimate for drivetrain control.
-    // The filter coefficient accounts for actual dt.
-    if (delta_t > 0.0f &&
-        std::isfinite(delta_t) &&
-        std::isfinite(raw_rider_torque)) {
-        const float tau = std::max(
-            config_.rider_torque_fast_time_constant,
-            0.001f);
-
-        const float alpha =
-            delta_t / (tau + delta_t);
-
-        lowpassfilter(
-            rider_torque_fast_estimate_,
-            std::max(0.0f, raw_rider_torque),
-            alpha);
-    }
-
     const float rider_delta =
         rider_torque_estimate_ -
         last_rider_torque;
@@ -1442,9 +1438,6 @@ void BikeController::reset_control_state(void) {
 
     // Reset reverse protection.
     crank_reverse_inhibited_ = false;
-
-    // Reset fast observer state.
-    rider_torque_fast_estimate_ = 0.0f;
 
     virtual_drivetrain_torque_limited = false;
 

@@ -586,7 +586,6 @@ interfaces:
       available_regen_sink_power: readonly float32
       battery_discharge_limited: readonly bool
       generator_power_limited: readonly bool
-      rider_torque_fast_estimate: readonly float32
       crank_speed_signed: readonly float32
       config:
         c_is_class: False

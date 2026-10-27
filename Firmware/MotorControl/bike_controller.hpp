@@ -7,7 +7,7 @@ class BikeController;
 
 #include "axis.hpp"
 
-// #define BIKE_SINGLE_MOTOR_TEST
+#define BIKE_SINGLE_MOTOR_TEST
 
 class ODrive;
 
@@ -67,15 +67,15 @@ class BikeController : public ODriveIntf::BikeControllerIntf {
 
         float pedal_torque_gradient_threshold = 1.0f;  // Nm/s
 
-        float crank_inertia = 0.05f;  // kg m^2, effective inertia referred to crank
-        float wheel_inertia = 1.0f;   // kg m^2, effective inertia referred to wheel
+        float crank_inertia = 0.0000633f;  // kg m^2, effective inertia referred to crank (bench test no gearbox)
+        float wheel_inertia = 0.05f;       // kg m^2, effective inertia referred to wheel
 
         float sync_natural_frequency = 5.0f;  // rad/s
         float sync_damping_ratio = 1.0f;
 
         float assist_ratio = 0.0f;  // 0 = no assist, 1 = 100% additional assist
 
-        float simulated_wheel_load = 0.25f;  // Nm per rad/s - Only used in single motor testing
+        float simulated_wheel_load = 0.02f;  // Nm per rad/s - Only used in single motor testing
 
         float crank_reverse_cutoff_rpm = 0.5f;
         float crank_forward_reengage_rpm = 1.0f;
@@ -112,7 +112,6 @@ class BikeController : public ODriveIntf::BikeControllerIntf {
     float rider_torque_estimate_ = 0.0f;
     float rider_torque_gradient_ = 0.0f;
     float rider_power_estimate_ = 0.0f;
-    float rider_torque_fast_estimate_ = 0.0f;
     float crank_speed_signed_ = 0.0f;  // rad/s
 
     float cadence_error_ = 0.0f;
