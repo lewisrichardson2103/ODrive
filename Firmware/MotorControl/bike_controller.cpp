@@ -978,7 +978,7 @@ void BikeController::run_control_loop(void) {
 #ifndef BIKE_SINGLE_MOTOR_TEST
                 driveAxis_->controller_.input_torque_ = 0.0f;
                 driveAxis_->requested_state_ =
-                    ODriveIntf::AxisIntf::AXIS_STATE_CLOSED_LOOP_CONTROL;
+                    ODriveIntf::AxisIntf::AXIS_STATE_IDLE;
 #endif
 
                 requested_state_ = BIKE_STATE_IDLE;
@@ -986,66 +986,60 @@ void BikeController::run_control_loop(void) {
         } break;
 
         case BIKE_STATE_IDLE: {
-            // Both axes should remain in closed-loop control.
+            // Pedal axes should remain in closed-loop control.
             // No torque is applied until both are ready.
 
             pedalAxis_->controller_.input_torque_ = 0.0f;
+            const bool pedal_closed_loop = pedalAxis_->current_state_ == ODriveIntf::AxisIntf::AXIS_STATE_CLOSED_LOOP_CONTROL;
+            if (!pedal_closed_loop) {
+                pedalAxis_->requested_state_ = ODriveIntf::AxisIntf::AXIS_STATE_CLOSED_LOOP_CONTROL;
+            }
 
 #ifndef BIKE_SINGLE_MOTOR_TEST
             driveAxis_->controller_.input_torque_ = 0.0f;
-#endif
-
-            pedalAxis_->requested_state_ =
-                ODriveIntf::AxisIntf::AXIS_STATE_CLOSED_LOOP_CONTROL;
-
-#ifndef BIKE_SINGLE_MOTOR_TEST
-            driveAxis_->requested_state_ =
-                ODriveIntf::AxisIntf::AXIS_STATE_CLOSED_LOOP_CONTROL;
-#endif
-
-            const bool pedal_closed_loop =
-                pedalAxis_->current_state_ ==
-                ODriveIntf::AxisIntf::AXIS_STATE_CLOSED_LOOP_CONTROL;
-
-#ifndef BIKE_SINGLE_MOTOR_TEST
-            const bool drive_closed_loop =
-                driveAxis_->current_state_ ==
-                ODriveIntf::AxisIntf::AXIS_STATE_CLOSED_LOOP_CONTROL;
-#else
-            const bool drive_closed_loop = true;
+            driveAxis_->requested_state_ = ODriveIntf::AxisIntf::AXIS_STATE_IDLE;
 #endif
 
             if (pedal_closed_loop &&
-                drive_closed_loop &&
                 drivetrain_feedback_valid) {
                 reset_control_state();
-                requested_state_ = BIKE_STATE_CONTROL;
+
+                if (rider_active()) {
+                    requested_state_ = BIKE_STATE_CONTROL;
+                }
             }
         } break;
 
         case BIKE_STATE_CONTROL: {
-            // Do not issue torque unless both axes
-            // remain in closed-loop control.
+            if (rider_stopped()) {
+                reset_control_state();
+                pedalAxis_->controller_.input_torque_ = 0.0f;
+#ifndef BIKE_SINGLE_MOTOR_TEST
+                driveAxis_->controller_.input_torque_ = 0.0f;
+                driveAxis_->requested_state_ = ODriveIntf::AxisIntf::AXIS_STATE_IDLE;
+#endif
+                requested_state_ = BIKE_STATE_IDLE;
+                break;
+            }
 
-            const bool pedal_closed_loop =
-                pedalAxis_->current_state_ ==
-                ODriveIntf::AxisIntf::AXIS_STATE_CLOSED_LOOP_CONTROL;
+            if (pedalAxis_->current_state_ != ODriveIntf::AxisIntf::AXIS_STATE_CLOSED_LOOP_CONTROL) {
+                pedalAxis_->requested_state_ = ODriveIntf::AxisIntf::AXIS_STATE_CLOSED_LOOP_CONTROL;
+                break;
+            }
 
 #ifndef BIKE_SINGLE_MOTOR_TEST
-            const bool drive_closed_loop =
-                driveAxis_->current_state_ ==
-                ODriveIntf::AxisIntf::AXIS_STATE_CLOSED_LOOP_CONTROL;
-#else
-            const bool drive_closed_loop = true;
+            if (driveAxis_->current_state_ != ODriveIntf::AxisIntf::AXIS_STATE_CLOSED_LOOP_CONTROL) {
+                driveAxis_->requested_state_ = ODriveIntf::AxisIntf::AXIS_STATE_CLOSED_LOOP_CONTROL;
+                break;
+            }
 #endif
 
-            if (!pedal_closed_loop ||
-                !drive_closed_loop ||
-                !drivetrain_feedback_valid) {
+            if (!drivetrain_feedback_valid) {
                 pedalAxis_->controller_.input_torque_ = 0.0f;
 
 #ifndef BIKE_SINGLE_MOTOR_TEST
                 driveAxis_->controller_.input_torque_ = 0.0f;
+                driveAxis_->requested_state_ = ODriveIntf::AxisIntf::AXIS_STATE_IDLE;
 #endif
 
                 reset_control_state();

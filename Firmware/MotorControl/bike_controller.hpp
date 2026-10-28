@@ -63,7 +63,7 @@ class BikeController : public ODriveIntf::BikeControllerIntf {
 
         float max_i_o_gear_ratio = 4.0f;
         float min_i_o_gear_ratio = 1.0f;
-        float max_gear_ratio_rate = 1.0f;  // ratio units per second
+        float max_gear_ratio_rate = 5.0f;  // ratio units per second
 
         float pedal_torque_gradient_threshold = 1.0f;  // Nm/s
 
