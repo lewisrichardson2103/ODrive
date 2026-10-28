@@ -1,5 +1,7 @@
 #include "bike_controller.hpp"
 
+#include <board.h>
+
 #include "odrive_main.h"
 #include "utils.hpp"
 
@@ -94,33 +96,40 @@ void BikeController::update_measurements(float delta_t) {
 }
 
 #ifdef BIKE_SINGLE_MOTOR_TEST
-void BikeController::update_simulated_wheel(float delta_t) {
-    if (delta_t <= 0.0f) {
+
+void BikeController::update_simulated_wheel(float dt) {
+    if (!std::isfinite(dt) || dt <= 0.0f)
+        return;
+
+    const float J = config_.wheel_inertia;
+    const float b = config_.simulated_wheel_load;
+
+    if (!std::isfinite(J) || J <= 0.0f ||
+        !std::isfinite(b) || b < 0.0f ||
+        !std::isfinite(wheel_torque_command_)) {
+        drivetrain_feedback_valid = false;
         return;
     }
 
-    const float drive_torque =
-        wheel_torque_command_;
+    const float drive_torque = std::clamp(
+        wheel_torque_command_,
+        0.0f,
+        config_.simulated_wheel_max_torque);
 
-    const float load_torque =
-        config_.simulated_wheel_load *
-        wheel_speed_estimate_;
+    const float old_speed = wheel_speed_estimate_;
 
-    const float raw_accel =
-        (drive_torque - load_torque) /
-        config_.wheel_inertia;
+    // Implicit Euler: stable for b >= 0
+    const float new_speed =
+        (J * old_speed + dt * drive_torque) /
+        (J + dt * b);
 
-    // Ideal simulated wheel dynamics
-    wheel_accel_estimate_ = raw_accel;
+    wheel_speed_estimate_ = std::clamp(
+        new_speed,
+        0.0f,
+        25.0f * TWO_PI);
 
-    wheel_speed_estimate_ +=
-        wheel_accel_estimate_ * delta_t;
-
-    wheel_speed_estimate_ =
-        std::clamp(
-            wheel_speed_estimate_,
-            0.0f,
-            std::max(driveAxis_->controller_.config_.vel_limit, 25.0f) * TWO_PI);
+    wheel_accel_estimate_ =
+        (wheel_speed_estimate_ - old_speed) / dt;
 }
 #endif
 
@@ -772,28 +781,38 @@ void BikeController::update_virtual_drivetrain_gains(void) {
 }
 
 void BikeController::update_values(void) {
-    const unsigned long now = micros();
+    static uint8_t invalid_dt_streak;
+    // BikeController is updated once per
+    // ODrive current-control cycle.
+    const float dt = CURRENT_MEAS_PERIOD;
 
-    // Avoid an invalid first timestep.
-    if (_last_update_time == 0) {
-        _last_update_time = now;
-        delta_t_ = 0.0f;
-        drivetrain_feedback_valid = false;
-        release_virtual_chain();
+    // Reject impossible timesteps without resetting
+    // the drivetrain or changing its state.
+    if (!std::isfinite(dt) ||
+        dt <= 0.0f ||
+        dt > 0.01f) {
+        ++invalid_dt_streak;
+
+        // Allow a brief isolated anomaly.
+        // If timing remains invalid, stop applying
+        // torque rather than holding it indefinitely.
+        if (invalid_dt_streak >= 3) {
+            delta_t_ = dt;
+            crank_torque_command_ = 0.0f;
+            wheel_torque_command_ = 0.0f;
+        }
+
+        // No measurement update, spring integration,
+        // simulated wheel update, or chain reset.
+        // The next control-loop iteration will retry.
         return;
     }
 
-    const float dt =
-        (now - _last_update_time) * MICRO_TO_SEC;
-
-    _last_update_time = now;
+    invalid_dt_streak = 0;
     delta_t_ = dt;
 
     // Reject invalid timing and model configuration.
     drivetrain_feedback_valid =
-        std::isfinite(dt) &&
-        dt > 0.0f &&
-        dt <= 0.01f &&
         std::isfinite(config_.chain_speed_filter_tau_s) &&
         config_.chain_speed_filter_tau_s > 0.0f &&
         std::isfinite(config_.crank_inertia) &&
