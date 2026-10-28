@@ -180,11 +180,11 @@ void BikeController::update_virtual_drivetrain_pi(float dt) {
 
     // Freewheel disengagement when the wheel
     // overruns the geared crank sufficiently.
-    if (sync_speed_error_ <
-        -config_.chain_overrun_deadband_rad_s) {
-        chain_stretch_ = 0.0f;
-        return;
-    }
+    // if (sync_speed_error_ <
+    //     -config_.chain_overrun_deadband_rad_s) {
+    //     chain_stretch_ = 0.0f;
+    //     return;
+    // }
 
     // Integrate relative angular displacement.
     chain_stretch_ = std::max(

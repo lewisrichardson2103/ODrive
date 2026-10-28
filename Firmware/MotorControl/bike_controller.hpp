@@ -48,7 +48,7 @@ class BikeController : public ODriveIntf::BikeControllerIntf {
 
         float engage_cadence = 5.0f;     // rpm
         float disengage_cadence = 2.0f;  // rpm
-        float cadence_kp = 0.005f;       // ratio/s per RPM
+        float cadence_kp = 5.0f;         // ratio/s per RPM
         float cadence_tolerance = 2.0f;  // RPM
 
         float gear_ratio_pedal = 1.0f;
@@ -63,7 +63,7 @@ class BikeController : public ODriveIntf::BikeControllerIntf {
 
         float max_i_o_gear_ratio = 4.0f;
         float min_i_o_gear_ratio = 1.0f;
-        float max_gear_ratio_rate = 0.1f;  // ratio units per second
+        float max_gear_ratio_rate = 1.0f;  // ratio units per second
 
         float pedal_torque_gradient_threshold = 1.0f;  // Nm/s
 
@@ -90,7 +90,7 @@ class BikeController : public ODriveIntf::BikeControllerIntf {
 
         float assist_ratio = 0.0f;  // 0 = no assist, 1 = 100% additional assist
 
-        float simulated_wheel_load = 0.02f;  // Nm per rad/s - Only used in single motor testing
+        float simulated_wheel_load = 0.002f;  // Nm per rad/s - Only used in single motor testing
 
         float crank_reverse_cutoff_rpm = 0.5f;
         float crank_forward_reengage_rpm = 1.0f;
