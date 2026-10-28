@@ -110,10 +110,8 @@ void BikeController::update_simulated_wheel(float delta_t) {
         (drive_torque - load_torque) /
         config_.wheel_inertia;
 
-    lowpassfilter(
-        wheel_accel_estimate_,
-        raw_accel,
-        config_.wheel_accel_smoothing_alpha);
+    // Ideal simulated wheel dynamics
+    wheel_accel_estimate_ = raw_accel;
 
     wheel_speed_estimate_ +=
         wheel_accel_estimate_ * delta_t;
@@ -122,7 +120,7 @@ void BikeController::update_simulated_wheel(float delta_t) {
         std::clamp(
             wheel_speed_estimate_,
             0.0f,
-            50.0f);
+            std::max(driveAxis_->controller_.config_.vel_limit, 25.0f) * TWO_PI);
 }
 #endif
 
@@ -158,79 +156,84 @@ void BikeController::update_sync_speed_error(void) {
         wheel_speed_estimate_;
 }
 
-void BikeController::update_virtual_drivetrain_pi(float delta_t) {
-    if (current_state_ != BIKE_STATE_CONTROL) {
-        sync_proportional_ = 0.0f;
-        virtual_torque_request_ = 0.0f;
+void BikeController::update_virtual_drivetrain_pi(float dt) {
+    virtual_torque_request_ = 0.0f;
+    sync_integral_ = 0.0f;
+    sync_proportional_ = 0.0f;
+
+    if (current_state_ != BIKE_STATE_CONTROL ||
+        crank_reverse_inhibited ||
+        !std::isfinite(dt) ||
+        dt <= 0.0f ||
+        !std::isfinite(sync_speed_error_)) {
         return;
     }
 
-    sync_proportional_ =
-        sync_kp_ *
-        sync_speed_error_;
-
-    if (delta_t > 0.0f) {
-        const float candidate_integral =
-            sync_integral_ +
-            (sync_ki_ *
-             sync_speed_error_ *
-             delta_t);
-
-        const float candidate_torque =
-            sync_proportional_ +
-            candidate_integral;
-
-        const bool pushing_below_lower_limit =
-            candidate_torque < 0.0f &&
-            sync_speed_error_ < 0.0f;
-
-        const bool pushing_above_upper_limit =
-            candidate_torque > virtual_torque_max_ &&
-            sync_speed_error_ > 0.0f;
-
-        const bool pushing_against_power_limit =
-            power_limit_factor_ < 0.999f &&
-            sync_speed_error_ > 0.0f;
-
-        if (!pushing_below_lower_limit &&
-            !pushing_above_upper_limit &&
-            !pushing_against_power_limit) {
-            sync_integral_ =
-                candidate_integral;
-        }
+    // Freewheel disengagement when the wheel
+    // overruns the geared crank sufficiently.
+    if (sync_speed_error_ <
+        -config_.chain_overrun_deadband_rad_s) {
+        chain_stretch_ = 0.0f;
+        return;
     }
 
-    virtual_torque_request_ =
-        sync_proportional_ +
-        sync_integral_;
-}
+    // Integrate relative angular displacement.
+    chain_stretch_ = std::max(
+        0.0f,
+        chain_stretch_ + sync_speed_error_ * dt);
 
-void BikeController::update_assistance_state(void) {
-    const float assist_ratio =
-        std::max(0.0f, config_.assist_ratio);
+    // Elastic component (virtual spring)
+    sync_integral_ =
+        sync_ki_ * chain_stretch_;
 
-    human_fraction_ =
-        1.0f / (1.0f + assist_ratio);
+    // Viscous component (virtual damper)
+    sync_proportional_ =
+        sync_kp_ * sync_speed_error_;
+
+    // A chain transmits pulling torque only.
+    virtual_torque_request_ = std::max(
+        0.0f,
+        sync_integral_ + sync_proportional_);
 }
 
 void BikeController::update_virtual_torque_authority(void) {
-    if (current_state_ != BIKE_STATE_CONTROL) {
-        virtual_torque_max_ = 0.0f;
+    virtual_torque_max_ = 0.0f;
+
+    if (current_state_ != BIKE_STATE_CONTROL)
+        return;
+
+    const float ratio = input_output_gear_ratio_;
+
+    if (!std::isfinite(ratio) || ratio <= 0.0f)
+        return;
+
+    // Maximum physical crank torque
+    const float max_crank =
+        pedalAxis_->motor_.max_available_torque() *
+        config_.gear_ratio_pedal;
+
+#ifdef BIKE_SINGLE_MOTOR_TEST
+    // Simulated second motor, limited to 5 A equivalent.
+    const float max_wheel =
+        config_.simulated_wheel_max_torque;
+#else
+    // Real second motor, using its current torque limit.
+    const float max_wheel =
+        driveAxis_->motor_.max_available_torque() *
+        config_.gear_ratio_drive;
+#endif
+
+    if (!std::isfinite(max_crank) ||
+        !std::isfinite(max_wheel) ||
+        max_crank <= 0.0f ||
+        max_wheel <= 0.0f) {
         return;
     }
 
-    if (input_output_gear_ratio_ <= 0.0f) {
-        virtual_torque_max_ = 0.0f;
-        return;
-    }
-
-    const float assist_ratio =
-        std::max(0.0f, config_.assist_ratio);
-
-    virtual_torque_max_ =
-        ((1.0f + assist_ratio) *
-         rider_torque_estimate_) /
-        input_output_gear_ratio_;
+    // Shared chain torque authority
+    virtual_torque_max_ = std::min(
+        max_wheel,
+        max_crank / ratio);
 }
 
 void BikeController::limit_virtual_torque(void) {
@@ -247,7 +250,7 @@ void BikeController::limit_virtual_torque(void) {
 
     virtual_drivetrain_torque_limited =
         virtual_torque_request_ >
-        virtual_torque_max_;
+        virtual_torque_limited_ + 0.001f;
 }
 
 void BikeController::apply_power_limits() {
@@ -697,7 +700,7 @@ float BikeController::limit_crank_torque(float requested_torque) const {
 
     // Do not allow negative motor torque whilst
     // reverse movement protection is active.
-    if (crank_reverse_inhibited_ &&
+    if (crank_reverse_inhibited &&
         requested_torque < 0.0f) {
         return 0.0f;
     }
@@ -709,109 +712,161 @@ float BikeController::limit_crank_torque(float requested_torque) const {
 
 void BikeController::update_virtual_torque_commands(void) {
     if (current_state_ != BIKE_STATE_CONTROL) {
+        chain_torque_ = 0.0f;
         crank_torque_command_ = 0.0f;
         wheel_torque_command_ = 0.0f;
         return;
     }
 
-    wheel_torque_command_ =
-        virtual_torque_limited_;
+    // Single shared mechanical chain torque
+    chain_torque_ = virtual_torque_limited_;
 
-    // Maximum available crank torque, accounting for
-    // motor current limits and the physical gear ratio.
-    const float max_crank_torque =
-        pedalAxis_->motor_.max_available_torque() *
-        config_.gear_ratio_pedal;
+    // Wheel receives the transmitted torque
+    wheel_torque_command_ = chain_torque_;
 
-    // Crank resistance is driven by the full PI request,
-    // rather than the rider-limited wheel torque.
-    const float requested_crank_resistance =
-        human_fraction_ *
-        input_output_gear_ratio_ *
-        std::max(0.0f, virtual_torque_request_);
-
-    // Limit resistance to the crank motor's capability.
+    // Crank receives the corresponding reaction
     crank_torque_command_ =
-        -std::min(
-            std::max(0.0f, max_crank_torque),
-            requested_crank_resistance);
+        -input_output_gear_ratio_ * chain_torque_;
 }
 
 void BikeController::update_virtual_drivetrain_gains(void) {
-    const float crank_inertia =
-        std::max(config_.crank_inertia, 0.0001f);
+    // Preserve the current spring torque through
+    // changes in ratio or tuning parameters.
+    const float stored_spring_torque =
+        sync_ki_ * chain_stretch_;
 
-    const float wheel_inertia =
-        std::max(config_.wheel_inertia, 0.0001f);
+    const float Jc =
+        std::max(config_.crank_inertia, 0.000001f);
 
-    const float gear_ratio =
+    const float Jw =
+        std::max(config_.wheel_inertia, 0.000001f);
+
+    const float R =
         std::max(input_output_gear_ratio_, 0.0001f);
 
+    const float wn =
+        std::max(config_.sync_natural_frequency, 0.0f);
+
+    const float zeta =
+        std::max(config_.sync_damping_ratio, 0.0f);
+
+    // Relative acceleration from unit chain torque
     drivetrain_inertia_gain_ =
-        (human_fraction_ *
-         gear_ratio *
-         gear_ratio /
-         crank_inertia) +
-        (1.0f / wheel_inertia);
+        (R * R / Jc) + (1.0f / Jw);
 
-    const float natural_frequency =
-        std::max(
-            0.0f,
-            config_.sync_natural_frequency);
-
-    const float damping_ratio =
-        std::max(
-            0.0f,
-            config_.sync_damping_ratio);
+    // Equivalent spring stiffness and damping
+    sync_ki_ =
+        (wn * wn) / drivetrain_inertia_gain_;
 
     sync_kp_ =
-        (2.0f *
-         damping_ratio *
-         natural_frequency) /
+        (2.0f * zeta * wn) /
         drivetrain_inertia_gain_;
 
-    sync_ki_ =
-        (natural_frequency *
-         natural_frequency) /
-        drivetrain_inertia_gain_;
+    // Preserve stored spring torque during gear changes.
+    if (sync_ki_ > 0.0f) {
+        chain_stretch_ =
+            std::max(0.0f, stored_spring_torque) / sync_ki_;
+    } else {
+        chain_stretch_ = 0.0f;
+    }
 }
 
 void BikeController::update_values(void) {
     const unsigned long now = micros();
 
-    float delta_t =
-        (now - _last_update_time) *
-        MICRO_TO_SEC;
+    // Avoid an invalid first timestep.
+    if (_last_update_time == 0) {
+        _last_update_time = now;
+        delta_t_ = 0.0f;
+        drivetrain_feedback_valid = false;
+        release_virtual_chain();
+        return;
+    }
 
-    delta_t_ = delta_t;
+    const float dt =
+        (now - _last_update_time) * MICRO_TO_SEC;
 
     _last_update_time = now;
+    delta_t_ = dt;
 
-    // 1. Hardware measurements
-    update_measurements(delta_t);
+    // Reject invalid timing and model configuration.
+    drivetrain_feedback_valid =
+        std::isfinite(dt) &&
+        dt > 0.0f &&
+        dt <= 0.01f &&
+        std::isfinite(config_.chain_speed_filter_tau_s) &&
+        config_.chain_speed_filter_tau_s > 0.0f &&
+        std::isfinite(config_.crank_inertia) &&
+        config_.crank_inertia > 0.0f &&
+        std::isfinite(config_.wheel_inertia) &&
+        config_.wheel_inertia > 0.0f &&
+        std::isfinite(config_.sync_natural_frequency) &&
+        config_.sync_natural_frequency > 0.0f &&
+        std::isfinite(config_.sync_damping_ratio) &&
+        config_.sync_damping_ratio >= 0.0f &&
+        std::isfinite(config_.chain_overrun_deadband_rad_s) &&
+        config_.chain_overrun_deadband_rad_s >= 0.0f &&
+        std::isfinite(config_.chain_standstill_threshold_rpm) &&
+        config_.chain_standstill_threshold_rpm > 0.0f &&
+        std::isfinite(config_.chain_standstill_timeout_s) &&
+        config_.chain_standstill_timeout_s > 0.0f;
 
-    // 2. Derived estimates
-    update_rider_torques(delta_t);
-    update_assistance_state();
+    if (!drivetrain_feedback_valid) {
+        release_virtual_chain();
+        power_limit_factor_ = 0.0f;
+        return;
+    }
 
-    // 3. Existing control calculations
-    calculate_target_gear_ratio(delta_t);
+    // 1. Read hardware and simulated measurements
+    update_measurements(dt);
 
-    // 4. Virtual drivetrain measurements
+    if (!pedalAxis_->encoder_.is_ready_) {
+        drivetrain_feedback_valid = false;
+    }
+
+#ifndef BIKE_SINGLE_MOTOR_TEST
+    if (!driveAxis_->encoder_.is_ready_) {
+        drivetrain_feedback_valid = false;
+    }
+#endif
+
+    if (!drivetrain_feedback_valid) {
+        release_virtual_chain();
+        power_limit_factor_ = 0.0f;
+        return;
+    }
+
+    // 2. Rider diagnostics, retained for future power mode
+    update_rider_torques(dt);
+
+    // Assistance is not yet implemented in the new model.
+    if (config_.assist_ratio != 0.0f) {
+        release_virtual_chain();
+        return;
+    }
+
+    // 3. Virtual gear controller
+    calculate_target_gear_ratio(dt);
+
+    // 4. Virtual chain controller
     update_virtual_drivetrain_gains();
     update_sync_speed_error();
     update_virtual_torque_authority();
-    update_virtual_drivetrain_pi(delta_t);
+
+    update_virtual_drivetrain_pi(dt);
     limit_virtual_torque();
     update_virtual_torque_commands();
 
-    // limit the completed virtual torque pair.
+    // 5. Physical electrical power limits
     apply_power_limits();
 
-    // Protect against reverse crank driving.
-    // This may release both torque commands and
-    // clear stored synchronisation integral torque.
+    // 6. Additional drivetrain protection
     update_reverse_protection();
+    update_stationary_release(dt);
+
+    // 7. Keep spring displacement consistent
+    // with the torque actually permitted
+    reconcile_chain_state();
 }
 
 void BikeController::run_control_loop(void) {
@@ -941,7 +996,9 @@ void BikeController::run_control_loop(void) {
             const bool drive_closed_loop = true;
 #endif
 
-            if (pedal_closed_loop && drive_closed_loop) {
+            if (pedal_closed_loop &&
+                drive_closed_loop &&
+                drivetrain_feedback_valid) {
                 reset_control_state();
                 requested_state_ = BIKE_STATE_CONTROL;
             }
@@ -963,7 +1020,9 @@ void BikeController::run_control_loop(void) {
             const bool drive_closed_loop = true;
 #endif
 
-            if (!pedal_closed_loop || !drive_closed_loop) {
+            if (!pedal_closed_loop ||
+                !drive_closed_loop ||
+                !drivetrain_feedback_valid) {
                 pedalAxis_->controller_.input_torque_ = 0.0f;
 
 #ifndef BIKE_SINGLE_MOTOR_TEST
@@ -1086,6 +1145,7 @@ void BikeController::update_crank_speed(float delta_t) {
         !std::isfinite(*maybe_vel) ||
         !std::isfinite(config_.gear_ratio_pedal) ||
         config_.gear_ratio_pedal <= 0.0f) {
+        drivetrain_feedback_valid = false;
         crank_speed_signed_ = 0.0f;
         return;
     }
@@ -1101,10 +1161,15 @@ void BikeController::update_crank_speed(float delta_t) {
     const float forward_speed =
         std::max(0.0f, crank_speed_signed_);
 
+    const float alpha = std::clamp(
+        delta_t / (config_.chain_speed_filter_tau_s + delta_t),
+        0.0f,
+        1.0f);
+
     lowpassfilter(
         crank_speed_estimate_,
         forward_speed,
-        config_.crank_speed_smoothing_alpha);
+        alpha);
 
     if (delta_t > 0.0f) {
         const float raw_crank_accel =
@@ -1124,9 +1189,95 @@ void BikeController::update_crank_speed(float delta_t) {
     cadence_estimate_ = get_cadence_rpm();
 }
 
+void BikeController::release_virtual_chain(void) {
+    // Clear all stored mechanical coupling state.
+    chain_stretch_ = 0.0f;
+    chain_torque_ = 0.0f;
+
+    sync_integral_ = 0.0f;
+    sync_proportional_ = 0.0f;
+
+    virtual_torque_request_ = 0.0f;
+    virtual_torque_limited_ = 0.0f;
+
+    crank_torque_command_ = 0.0f;
+    wheel_torque_command_ = 0.0f;
+}
+
+void BikeController::reconcile_chain_state(void) {
+    if (current_state_ != BIKE_STATE_CONTROL)
+        return;
+
+    // Final chain torque after physical and power limits.
+    const float permitted_torque = std::max(
+        0.0f,
+        wheel_torque_command_);
+
+    chain_torque_ = permitted_torque;
+
+    const bool saturated =
+        virtual_torque_request_ >
+        permitted_torque + 0.001f;
+
+    virtual_drivetrain_torque_limited = saturated;
+
+    // Only prevent further stretch accumulation
+    // when the crank is pulling ahead of the wheel.
+    if (!saturated || sync_speed_error_ <= 0.0f)
+        return;
+
+    if (sync_ki_ <= 0.0f) {
+        chain_stretch_ = 0.0f;
+        return;
+    }
+
+    // The proportional torque already uses part
+    // of the available transmission torque.
+    const float available_spring_torque = std::max(
+        0.0f,
+        permitted_torque - sync_proportional_);
+
+    const float max_stretch =
+        available_spring_torque / sync_ki_;
+
+    chain_stretch_ = std::min(
+        chain_stretch_,
+        max_stretch);
+}
+
+void BikeController::update_stationary_release(float dt) {
+    if (current_state_ != BIKE_STATE_CONTROL ||
+        !std::isfinite(dt) || dt <= 0.0f) {
+        chain_standstill_elapsed = 0.0f;
+        return;
+    }
+
+    const float threshold =
+        config_.chain_standstill_threshold_rpm *
+        TWO_PI / 60.0f;
+
+    const bool crank_stopped =
+        std::fabs(crank_speed_signed_) < threshold;
+
+    const bool wheel_stopped =
+        std::fabs(wheel_speed_estimate_) < threshold;
+
+    if (!crank_stopped || !wheel_stopped) {
+        chain_standstill_elapsed = 0.0f;
+        return;
+    }
+
+    chain_standstill_elapsed += dt;
+
+    if (chain_standstill_elapsed >=
+        config_.chain_standstill_timeout_s) {
+        release_virtual_chain();
+    }
+}
+
 void BikeController::update_reverse_protection(void) {
     if (current_state_ != BIKE_STATE_CONTROL) {
-        crank_reverse_inhibited_ = false;
+        crank_reverse_inhibited = false;
         return;
     }
 
@@ -1134,60 +1285,70 @@ void BikeController::update_reverse_protection(void) {
         crank_speed_signed_ * RAD_PER_SEC_TO_RPM;
 
     if (!std::isfinite(crank_rpm)) {
-        crank_reverse_inhibited_ = true;
+        crank_reverse_inhibited = true;
     }
 
     // Reverse movement detected.
     if (crank_rpm <=
         -config_.crank_reverse_cutoff_rpm) {
-        crank_reverse_inhibited_ = true;
+        crank_reverse_inhibited = true;
     }
 
     // Forward movement has resumed.
-    if (crank_reverse_inhibited_ &&
+    if (crank_reverse_inhibited &&
         crank_rpm >=
             config_.crank_forward_reengage_rpm) {
-        crank_reverse_inhibited_ = false;
+        crank_reverse_inhibited = false;
     }
 
-    if (crank_reverse_inhibited_) {
-        // Remove stored coupling torque.
-        sync_integral_ = 0.0f;
-        sync_proportional_ = 0.0f;
-
-        virtual_torque_request_ = 0.0f;
-        virtual_torque_limited_ = 0.0f;
-
-        // Release both sides of the coupling.
-        crank_torque_command_ = 0.0f;
-        wheel_torque_command_ = 0.0f;
+    if (crank_reverse_inhibited) {
+        release_virtual_chain();
     }
 }
 
 void BikeController::update_wheel_speed(float delta_t) {
-    std::optional<float> maybe_vel =
+    const auto maybe_vel =
         driveAxis_->encoder_.vel_estimate_.any();
 
-    if (maybe_vel.has_value()) {
-        // ODrive encoder velocity is in turns/s.
-        const float motor_speed_rad_s =
-            maybe_vel.value() * TURNS_PER_SEC_TO_RAD_PER_SEC;
-
-        // Convert motor speed to wheel speed through the fixed physical gearbox.
-        const float newVal =
-            motor_speed_rad_s / config_.gear_ratio_drive;
-        lowpassfilter(wheel_speed_estimate_, newVal, config_.wheel_speed_smoothing_alpha);
-
-        if (delta_t > 0.0f) {
-            float raw_accel = (wheel_speed_estimate_ -
-                               _last_wheel_speed_estimate) /
-                              delta_t;
-            lowpassfilter(wheel_accel_estimate_, raw_accel, config_.wheel_accel_smoothing_alpha);
-        }
-
-        _last_wheel_speed_estimate =
-            wheel_speed_estimate_;
+    if (!maybe_vel.has_value() ||
+        !std::isfinite(*maybe_vel) ||
+        !std::isfinite(config_.gear_ratio_drive) ||
+        config_.gear_ratio_drive <= 0.0f) {
+        drivetrain_feedback_valid = false;
+        return;
     }
+
+    const float motor_speed_rad_s =
+        *maybe_vel * TWO_PI;
+
+    const float newVal =
+        motor_speed_rad_s / config_.gear_ratio_drive;
+
+    const float alpha = std::clamp(
+        delta_t /
+            (config_.chain_speed_filter_tau_s + delta_t),
+        0.0f,
+        1.0f);
+
+    lowpassfilter(
+        wheel_speed_estimate_,
+        newVal,
+        alpha);
+
+    if (delta_t > 0.0f) {
+        const float raw_accel =
+            (wheel_speed_estimate_ -
+             _last_wheel_speed_estimate) /
+            delta_t;
+
+        lowpassfilter(
+            wheel_accel_estimate_,
+            raw_accel,
+            config_.wheel_accel_smoothing_alpha);
+    }
+
+    _last_wheel_speed_estimate =
+        wheel_speed_estimate_;
 }
 
 void BikeController::update_rider_torques(float delta_t) {
@@ -1239,8 +1400,9 @@ void BikeController::calculate_target_gear_ratio(float delta_t) {
         }
 
         case ODriveIntf::BikeControllerIntf::BikeMode::BIKE_MODE_AUTO_POWER: {
-            float new_gear_ratio = config_.target_power / rider_power_estimate_;
-            target_input_output_gear_ratio_ = std::clamp(new_gear_ratio, config_.min_i_o_gear_ratio, config_.max_i_o_gear_ratio);
+            // TODO: Implement outer power-to-cadence controller.
+            // Temporarily use fixed gearing.
+            target_input_output_gear_ratio_ = get_fixed_gear(currentGear_);
             update_active_gear_ratio(delta_t);
             break;
         }
@@ -1429,6 +1591,10 @@ void BikeController::reset_control_state(void) {
     sync_integral_ = 0.0f;
     sync_proportional_ = 0.0f;
 
+    chain_stretch_ = 0.0f;
+    chain_torque_ = 0.0f;
+    chain_standstill_elapsed = 0.0f;
+
     virtual_torque_request_ = 0.0f;
     virtual_torque_max_ = 0.0f;
     virtual_torque_limited_ = 0.0f;
@@ -1437,7 +1603,7 @@ void BikeController::reset_control_state(void) {
     wheel_torque_command_ = 0.0f;
 
     // Reset reverse protection.
-    crank_reverse_inhibited_ = false;
+    crank_reverse_inhibited = false;
 
     virtual_drivetrain_torque_limited = false;
 

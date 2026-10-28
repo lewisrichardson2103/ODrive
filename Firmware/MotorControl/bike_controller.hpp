@@ -48,7 +48,7 @@ class BikeController : public ODriveIntf::BikeControllerIntf {
 
         float engage_cadence = 5.0f;     // rpm
         float disengage_cadence = 2.0f;  // rpm
-        float cadence_kp = 0.00000001f;  // ratio/s per RPM
+        float cadence_kp = 0.005f;       // ratio/s per RPM
         float cadence_tolerance = 2.0f;  // RPM
 
         float gear_ratio_pedal = 1.0f;
@@ -63,15 +63,30 @@ class BikeController : public ODriveIntf::BikeControllerIntf {
 
         float max_i_o_gear_ratio = 4.0f;
         float min_i_o_gear_ratio = 1.0f;
-        float max_gear_ratio_rate = 0.0001f;  // ratio units per second
+        float max_gear_ratio_rate = 0.1f;  // ratio units per second
 
         float pedal_torque_gradient_threshold = 1.0f;  // Nm/s
 
         float crank_inertia = 0.0000633f;  // kg m^2, effective inertia referred to crank (bench test no gearbox)
-        float wheel_inertia = 0.05f;       // kg m^2, effective inertia referred to wheel
+        float wheel_inertia = 0.0000633f;  // kg m^2, effective inertia referred to wheel
 
-        float sync_natural_frequency = 5.0f;  // rad/s
+        float sync_natural_frequency = 40.0f;  // rad/s
         float sync_damping_ratio = 1.0f;
+
+        // Virtual chain engagement and release
+        float chain_overrun_deadband_rad_s = 0.2f;
+
+        // Release stored chain tension after both shafts
+        // remain stationary for this duration.
+        float chain_standstill_timeout_s = 0.25f;
+        float chain_standstill_threshold_rpm = 0.5f;
+
+        // Time constant for speed filtering.
+        float chain_speed_filter_tau_s = 0.01f;
+
+        // Maximum simulated wheel torque, corresponding
+        // to a 5 A motor with Kt = 0.059 Nm/A.
+        float simulated_wheel_max_torque = 0.295f;
 
         float assist_ratio = 0.0f;  // 0 = no assist, 1 = 100% additional assist
 
@@ -125,14 +140,15 @@ class BikeController : public ODriveIntf::BikeControllerIntf {
     float sync_kp_ = 0.0f;
     float sync_ki_ = 0.0f;
     float drivetrain_inertia_gain_ = 0.0f;
-    float sync_speed_error_ = 0.0f;        // rad/s
-    float sync_integral_ = 0.0f;           // Nm
-    float sync_proportional_ = 0.0f;       // Nm
+    float sync_speed_error_ = 0.0f;   // rad/s
+    float sync_integral_ = 0.0f;      // Nm
+    float sync_proportional_ = 0.0f;  // Nm
+    // Explicit virtual chain state
+    float chain_stretch_ = 0.0f;           // wheel-side radians
+    float chain_torque_ = 0.0f;            // transmitted Nm
     float virtual_torque_request_ = 0.0f;  // Nm, wheel-side virtual torque - raw PI request
-    float virtual_torque_max_ = 0.0f;      // Nm, wheel-side rider authority
-    float virtual_torque_limited_ = 0.0f;  // Nm, PI request after authority limit
-
-    float human_fraction_ = 1.0f;
+    float virtual_torque_max_ = 0.0f;      // Nm, wheel-side motor authority
+    float virtual_torque_limited_ = 0.0f;  // Nm, shared chain torque after limits
 
     float crank_torque_command_ = 0.0f;  // Nm at crank
     float wheel_torque_command_ = 0.0f;  // Nm at wheel
@@ -197,7 +213,9 @@ class BikeController : public ODriveIntf::BikeControllerIntf {
     void limit_virtual_torque(void);
     void update_reverse_protection(void);
 
-    void update_assistance_state(void);
+    void release_virtual_chain();
+    void reconcile_chain_state();
+    void update_stationary_release(float dt);
 
     void update_virtual_torque_commands(void);
     void update_virtual_drivetrain_gains(void);
@@ -231,7 +249,9 @@ class BikeController : public ODriveIntf::BikeControllerIntf {
     float _last_wheel_speed_estimate = 0.0f;
     unsigned long _last_update_time = 0.0;
     bool virtual_drivetrain_torque_limited = false;
-    bool crank_reverse_inhibited_ = false;
+    bool crank_reverse_inhibited = false;
+    float chain_standstill_elapsed = 0.0f;
+    bool drivetrain_feedback_valid = false;
 
     Axis* pedalAxis_ = nullptr;
     Axis* driveAxis_ = nullptr;

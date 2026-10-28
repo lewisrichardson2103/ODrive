@@ -569,11 +569,6 @@ interfaces:
         doc: |
           Virtual drivetrain torque request after applying rider
           torque authority, in Nm.
-      human_fraction:
-        type: readonly float32
-        doc: |
-          Fraction of virtual drivetrain reaction supplied by the rider.
-          1 = unassisted, 0.5 = equal rider/battery contribution.
       sync_kp:
         type: readonly float32
       sync_ki:
@@ -587,6 +582,8 @@ interfaces:
       battery_discharge_limited: readonly bool
       generator_power_limited: readonly bool
       crank_speed_signed: readonly float32
+      chain_stretch: readonly float32
+      chain_torque: readonly float32
       config:
         c_is_class: False
         attributes:
@@ -663,6 +660,11 @@ interfaces:
           sync_damping_ratio:
             type: float32
             doc: Virtual drivetrain closed-loop damping ratio.
+          chain_overrun_deadband_rad_s: float32
+          chain_standstill_timeout_s: float32
+          chain_standstill_threshold_rpm: float32
+          chain_speed_filter_tau_s: float32
+          simulated_wheel_max_torque: float32
           assist_ratio:
             type: float32
             doc: |
