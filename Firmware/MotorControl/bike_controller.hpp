@@ -46,8 +46,8 @@ class BikeController : public ODriveIntf::BikeControllerIntf {
         float fixed_gear_6 = 3.8f;
         float fixed_gear_7 = 4.0f;
 
-        float engage_cadence = 5.0f;     // rpm
-        float disengage_cadence = 2.0f;  // rpm
+        float engage_cadence = 1.0f;     // rpm
+        float disengage_cadence = 0.5f;  // rpm
         float cadence_kp = 5.0f;         // ratio/s per RPM
         float cadence_tolerance = 2.0f;  // RPM
 

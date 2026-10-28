@@ -881,7 +881,9 @@ void BikeController::update_values(void) {
 
     // 6. Additional drivetrain protection
     update_reverse_protection();
-    update_stationary_release(dt);
+
+    // TODO - This may need to come back
+    // update_stationary_release(dt);
 
     // 7. Keep spring displacement consistent
     // with the torque actually permitted
@@ -1002,25 +1004,25 @@ void BikeController::run_control_loop(void) {
 
             if (pedal_closed_loop &&
                 drivetrain_feedback_valid) {
-                reset_control_state();
+                // reset_control_state();
 
-                if (rider_active()) {
-                    requested_state_ = BIKE_STATE_CONTROL;
-                }
+                // if (rider_active()) {
+                requested_state_ = BIKE_STATE_CONTROL;
+                // }
             }
         } break;
 
         case BIKE_STATE_CONTROL: {
-            if (rider_stopped()) {
-                reset_control_state();
-                pedalAxis_->controller_.input_torque_ = 0.0f;
-#ifndef BIKE_SINGLE_MOTOR_TEST
-                driveAxis_->controller_.input_torque_ = 0.0f;
-                driveAxis_->requested_state_ = ODriveIntf::AxisIntf::AXIS_STATE_IDLE;
-#endif
-                requested_state_ = BIKE_STATE_IDLE;
-                break;
-            }
+            //             if (rider_stopped()) {
+            //                 reset_control_state();
+            //                 pedalAxis_->controller_.input_torque_ = 0.0f;
+            // #ifndef BIKE_SINGLE_MOTOR_TEST
+            //                 driveAxis_->controller_.input_torque_ = 0.0f;
+            //                 driveAxis_->requested_state_ = ODriveIntf::AxisIntf::AXIS_STATE_IDLE;
+            // #endif
+            //                 requested_state_ = BIKE_STATE_IDLE;
+            //                 break;
+            //             }
 
             if (pedalAxis_->current_state_ != ODriveIntf::AxisIntf::AXIS_STATE_CLOSED_LOOP_CONTROL) {
                 pedalAxis_->requested_state_ = ODriveIntf::AxisIntf::AXIS_STATE_CLOSED_LOOP_CONTROL;
@@ -1042,7 +1044,7 @@ void BikeController::run_control_loop(void) {
                 driveAxis_->requested_state_ = ODriveIntf::AxisIntf::AXIS_STATE_IDLE;
 #endif
 
-                reset_control_state();
+                // reset_control_state();
                 requested_state_ = BIKE_STATE_IDLE;
                 break;
             }
