@@ -1252,6 +1252,12 @@ void BikeController::reconcile_chain_state(void) {
         0.0f,
         permitted_torque - sync_proportional_);
 
+    // If the above causes the crank to click out and the
+    // torque disapear then we can try this.
+    // Previously I didn't notice any change so I reverted back
+    // to the above.
+    // const float available_spring_torque = permitted_torque;
+
     const float max_stretch =
         available_spring_torque / sync_ki_;
 

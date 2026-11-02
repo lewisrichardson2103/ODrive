@@ -7,7 +7,7 @@ class BikeController;
 
 #include "axis.hpp"
 
-#define BIKE_SINGLE_MOTOR_TEST
+// #define BIKE_SINGLE_MOTOR_TEST
 
 class ODrive;
 
