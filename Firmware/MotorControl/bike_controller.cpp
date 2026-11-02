@@ -1248,9 +1248,7 @@ void BikeController::reconcile_chain_state(void) {
 
     // The proportional torque already uses part
     // of the available transmission torque.
-    const float available_spring_torque = std::max(
-        0.0f,
-        permitted_torque - sync_proportional_);
+    const float available_spring_torque = permitted_torque;
 
     // If the above causes the crank to click out and the
     // torque disapear then we can try this.
