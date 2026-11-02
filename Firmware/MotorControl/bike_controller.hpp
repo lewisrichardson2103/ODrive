@@ -68,7 +68,7 @@ class BikeController : public ODriveIntf::BikeControllerIntf {
         float pedal_torque_gradient_threshold = 1.0f;  // Nm/s
 
         float crank_inertia = 0.0000633f;  // kg m^2, effective inertia referred to crank (bench test no gearbox)
-        float wheel_inertia = 0.0000633f;  // kg m^2, effective inertia referred to wheel
+        float wheel_inertia = 0.03325f;  // kg m^2, effective inertia referred to wheel
 
         float sync_natural_frequency = 40.0f;  // rad/s
         float sync_damping_ratio = 1.0f;
