@@ -500,31 +500,90 @@ interfaces:
           AUTO_POWER will act like a CVT to keep the rider at a set power target.
       currentGear:
         type: uint32
+      target_input_output_gear_ratio:
+        type: float32
+      input_output_gear_ratio:
+        type: float32
+      sync_speed_error:
+        type: float32
+        doc: |
+          Virtual drivetrain speed mismatch in rad/s.
+          Positive means the crank side is leading the wheel side.
+          Negative means the wheel side is overrunning the crank side.
       requested_state:
         type: BikeState
         brief: The user's commanded bike state
         doc: |
           This is used to command the bike controller to change state or perform certain routines.
           Values input here will be "consumed" and queued by the state machine handler.  Thus, reading this value back will usually show `UNDEFINED` (0).
+      crank_speed_estimate:
+        type: readonly float32
+        doc: Crank speed after fixed gearbox in rad/s
+      crank_accel_estimate:
+        type: readonly float32
+        doc: Crank speed acceleration after fixed gearbox in rad/s^2
       cadence_estimate:
         type: readonly float32
         doc: The current cadence value.
-      resistance_torque:
-        type: float32
-        doc: The resistance torque felt at the pedals in Nm.
+      cadence_error:
+        type: readonly float32
+        doc: Error for auto cadence loop.
+      crank_motor_torque:
+        type: readonly float32
+        doc: Estimated crank motor torque calculated from motor Iq_measured and low pass filter
+      crank_torque_command:
+        type: readonly float32
+        doc: Requested resistance (negative) torque at the crank in Nm. Resistance the rider will feel
       rider_torque_estimate:
         type: readonly float32
-        doc: The estimated rider torque based on torque on the motor and inertial interpolation.
+        doc: The estimated rider torque in Nm based on torque on the motor and inertial interpolation.
       rider_power_estimate:
         type: readonly float32
+        doc: The estimated rider power in watts based on torque on the motor and inertial interpolation.
       wheel_speed_estimate:
         type: readonly float32
-        doc: The current wheel speed value.
-      drive_torque_estimate:
+        doc: The current wheel speed value in rad/s after fixed internal gearbox
+      wheel_accel_estimate:
         type: readonly float32
-        doc: The torque output of the drive motor in Nm.
-      drive_power_estimate:
+        doc: Wheel speed acceleration after fixed gearbox in rad/s^2
+      wheel_motor_torque:
         type: readonly float32
+        doc: Estimated wheel motor torque calculated from motor Iq_measured and smoothed
+      wheel_torque_command:
+        type: readonly float32
+        doc: Requested torque for the drive motor at the wheel in Nm.
+      sync_proportional:
+        type: readonly float32
+      sync_integral:
+        type: readonly float32
+      virtual_torque_request:
+        type: readonly float32
+        doc: Nm, wheel-side virtual torque output from virtual gearbox pi controller
+      virtual_torque_max:
+        type: readonly float32
+        doc: |
+          Maximum wheel-side virtual drivetrain torque currently
+          available from rider input, in Nm.
+      virtual_torque_limited:
+        type: readonly float32
+        doc: |
+          Virtual drivetrain torque request after applying rider
+          torque authority, in Nm.
+      sync_kp:
+        type: readonly float32
+      sync_ki:
+        type: readonly float32
+      drivetrain_inertia_gain: readonly float32
+      delta_t: readonly float32
+      power_limit_factor: readonly float32
+      battery_discharge_power_request: readonly float32
+      generator_absorption_power_request: readonly float32
+      available_regen_sink_power: readonly float32
+      battery_discharge_limited: readonly bool
+      generator_power_limited: readonly bool
+      crank_speed_signed: readonly float32
+      chain_stretch: readonly float32
+      chain_torque: readonly float32
       config:
         c_is_class: False
         attributes:
@@ -542,7 +601,20 @@ interfaces:
           fixed_gear_5: { type: float32 }
           fixed_gear_6: { type: float32 }
           fixed_gear_7: { type: float32 }
-          min_cadence: float32
+          engage_cadence:
+            type: float32
+            doc: |
+              The cadence upper threshold for determining when a rider has started pedaling
+          disengage_cadence:
+            type: float32
+            doc: |
+              The cadence lower threshold for determining when a rider has stopped pedaling
+          cadence_kp:
+            type: float32
+            doc: Proportional gain for cadence controller
+          cadence_tolerance:
+            type: float32
+            doc: Max tolerance before auto cadence kicks in
           gear_ratio_pedal:
             type: float32
             doc: |
@@ -553,19 +625,84 @@ interfaces:
             doc: |
               The internal gear ratio of the output side. I.e. the gear ratio that describes the speed of the wheel
               compared to the drive motor speed.
-          cadence_smoothing_alpha:
+          crank_speed_smoothing_alpha:
             type: float32
-            doc: A low pass filter is used to smooth the values for cadence, this is the alpha value.
+            doc: A low pass filter is used to smooth the values for crank speed, this is the alpha value.
+          crank_accel_smoothing_alpha:
+            type: float32
+            doc: A low pass filter is used to smooth the values for crank accel, this is the alpha value.
           wheel_speed_smoothing_alpha:
             type: float32
             doc: A low pass filter is used to smooth the values for wheel speed, this is the alpha value.
-          torque_smoothing_alpha:
+          wheel_accel_smoothing_alpha:
             type: float32
-            doc: A low pass filter to smooth the values for torque read from the motors
+            doc: A low pass filter is used to smooth the values for wheel accel, this is the alpha value.
+          rider_torque_smoothing_alpha:
+            type: float32
+            doc: A low pass filter to smooth the values for torque from the rider
+          wheel_torque_smoothing_alpha:
+            type: float32
+            doc: A low pass filter to smooth the values for torque from the real wheel
+          crank_torque_smoothing_alpha:
+            type: float32
+            doc: A low pass filter to smooth the values for torque from the crank motor
           max_i_o_gear_ratio: float32
           min_i_o_gear_ratio: float32
-          cadence_tolerance: float32
+          max_gear_ratio_rate:
+            type: float32
+            doc: A slew rate configuration for gear changes to smooth them out
           pedal_torque_gradient_threshold: float32
+          crank_inertia: float32
+          wheel_inertia: float32
+          sync_natural_frequency:
+            type: float32
+            doc: Virtual drivetrain closed-loop natural frequency in rad/s.
+          sync_damping_ratio:
+            type: float32
+            doc: Virtual drivetrain closed-loop damping ratio.
+          chain_overrun_deadband_rad_s: float32
+          chain_standstill_timeout_s: float32
+          chain_standstill_threshold_rpm: float32
+          chain_speed_filter_tau_s: float32
+          simulated_wheel_max_torque: float32
+          assist_ratio:
+            type: float32
+            doc: |
+              Assistance level of battery power to assist the rider.
+              0 = no assist, 1 = 100% additional assist
+          simulated_wheel_load:
+            type: float32
+            doc: Nm - Only used in single motor testing
+          crank_reverse_cutoff_rpm:
+            type: float32
+            doc: |
+              For slowing down negative torque when the crank comes to rest to ensure the
+              pedal never gets driven the wrong way
+          crank_forward_reengage_rpm:
+            type: float32
+            doc: |
+              When to allow full negative torque against the rider. Linked to crank_torque_cutoff_rpm
+          enable_power_limits: bool
+          max_battery_discharge_power: float32
+          max_battery_charge_power: float32
+          max_brake_resistor_power: float32
+          drive_efficiency_estimate: float32
+          rider_torque_fast_time_constant: float32
+      power_monitor:
+        c_is_class: False
+        attributes:
+          bus_voltage: readonly float32
+          battery_current: readonly float32
+          battery_power: readonly float32
+
+          pedal_electrical_power: readonly float32
+          wheel_electrical_power: readonly float32
+
+          pedal_mechanical_power: readonly float32
+          wheel_mechanical_power: readonly float32
+
+          brake_resistor_power: readonly float32
+          power_balance_error: readonly float32
       task_times:
         c_is_class: False
         attributes:
@@ -1967,6 +2104,8 @@ valuetypes:
         doc: Drive motor is in regenerative braking mode.
       ERROR:
         doc: The ODrive is in an error state on one or more of the axes.
+      TESTING:
+        doc: Used for manual operation in GUI for testing inertia etc.
 
   ODrive.BikeController.BikeMode:
     values:

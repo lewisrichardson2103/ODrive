@@ -7,11 +7,15 @@ class BikeController;
 
 #include "axis.hpp"
 
+// #define BIKE_SINGLE_MOTOR_TEST
+
+class ODrive;
+
 class BikeController : public ODriveIntf::BikeControllerIntf {
    public:
     BikeController();
 
-    void SetAxes(Axis* pedalAxis, Axis* driveAxis);
+    void SetAxes(ODrive* odrive, Axis* pedalAxis, Axis* driveAxis);
     void run_control_loop(void);
 
     inline float get_fixed_gear(uint32_t idx) const {
@@ -42,16 +46,68 @@ class BikeController : public ODriveIntf::BikeControllerIntf {
         float fixed_gear_6 = 3.8f;
         float fixed_gear_7 = 4.0f;
 
-        float min_cadence = 5.0f;
-        float gear_ratio_pedal = 18.0f;
+        float engage_cadence = 1.0f;     // rpm
+        float disengage_cadence = 0.5f;  // rpm
+        float cadence_kp = 5.0f;         // ratio/s per RPM
+        float cadence_tolerance = 2.0f;  // RPM
+
+        float gear_ratio_pedal = 1.0f;
         float gear_ratio_drive = 1.0f;
-        float cadence_smoothing_alpha = 1.0f;
-        float wheel_speed_smoothing_alpha = 1.0f;
-        float torque_smoothing_alpha = 1.0f;
+        float crank_speed_smoothing_alpha = 0.001f;
+        float crank_accel_smoothing_alpha = 0.01f;
+        float crank_torque_smoothing_alpha = 1.0f;
+        float rider_torque_smoothing_alpha = 0.0001f;
+        float wheel_speed_smoothing_alpha = 0.01f;
+        float wheel_accel_smoothing_alpha = 0.0001f;
+        float wheel_torque_smoothing_alpha = 0.01f;
+
         float max_i_o_gear_ratio = 4.0f;
         float min_i_o_gear_ratio = 1.0f;
-        float cadence_tolerance = 5.0f;
+        float max_gear_ratio_rate = 5.0f;  // ratio units per second
+
         float pedal_torque_gradient_threshold = 1.0f;  // Nm/s
+
+        float crank_inertia = 0.0000633f;  // kg m^2, effective inertia referred to crank (bench test no gearbox)
+        float wheel_inertia = 0.03325f;  // kg m^2, effective inertia referred to wheel
+
+        float sync_natural_frequency = 40.0f;  // rad/s
+        float sync_damping_ratio = 1.0f;
+
+        // Virtual chain engagement and release
+        float chain_overrun_deadband_rad_s = 0.2f;
+
+        // Release stored chain tension after both shafts
+        // remain stationary for this duration.
+        float chain_standstill_timeout_s = 0.25f;
+        float chain_standstill_threshold_rpm = 0.5f;
+
+        // Time constant for speed filtering.
+        float chain_speed_filter_tau_s = 0.01f;
+
+        // Maximum simulated wheel torque, corresponding
+        // to a 5 A motor with Kt = 0.059 Nm/A.
+        float simulated_wheel_max_torque = 0.295f;
+
+        float assist_ratio = 0.0f;  // 0 = no assist, 1 = 100% additional assist
+
+        float simulated_wheel_load = 0.002f;  // Nm per rad/s - Only used in single motor testing
+
+        float crank_reverse_cutoff_rpm = 0.5f;
+        float crank_forward_reengage_rpm = 1.0f;
+        // Fast rider torque estimation
+        float rider_torque_fast_time_constant = 0.05f;
+
+        // power management
+        bool enable_power_limits = true;
+        // Positive battery discharge into the DC bus.
+        float max_battery_discharge_power = 40.0f;  // W
+        // Maximum power allowed back into the battery.
+        // Zero for a bench PSU that cannot absorb regeneration.
+        float max_battery_charge_power = 0.0f;  // W
+        // Conservative continuous resistor power budget.
+        float max_brake_resistor_power = 15.0f;  // W
+        // Conservative wheel-drive efficiency estimate.
+        float drive_efficiency_estimate = 0.70f;
     };
 
     struct TaskTimes {
@@ -64,52 +120,142 @@ class BikeController : public ODriveIntf::BikeControllerIntf {
     ODriveIntf::BikeControllerIntf::BikeState requested_state_ = ODriveIntf::BikeControllerIntf::BikeState::BIKE_STATE_CALIBRATION;
 
     uint32_t currentGear_ = 0;
-    float cadence_estimate_ = 0.0f;
-    float cadence_accel_estimate_ = 0.0f;
-    float resistance_torque_ = 0.0f;
-    float resistance_torque_gradient_ = 0.0f;
+    float crank_speed_estimate_ = 0.0f;  // rad/s
+    float crank_accel_estimate_ = 0.0f;  // rad/s^2
+    float cadence_estimate_ = 0.0f;      // rpm
+
     float rider_torque_estimate_ = 0.0f;
     float rider_torque_gradient_ = 0.0f;
     float rider_power_estimate_ = 0.0f;
-    float target_resistance_torque_ = 0.0f;
+    float crank_speed_signed_ = 0.0f;  // rad/s
+
+    float cadence_error_ = 0.0f;
+    float gear_ratio_rate_command_ = 0.0f;
 
     float input_output_gear_ratio_ = 1.0f;  // 1:1 at the start
+    float target_input_output_gear_ratio_ = 1.0f;
 
-    float wheel_speed_estimate_ = 0.0f;
-    float wheel_accel_estimate_ = 0.0f;
-    float target_wheel_speed_ = 0.0f;
-    float drive_torque_estimate_ = 0.0f;
-    float drive_torque_gradient_ = 0.0f;
-    float drive_power_estimate_ = 0.0f;
+    float delta_t_ = 0.0f;
+
+    float sync_kp_ = 0.0f;
+    float sync_ki_ = 0.0f;
+    float drivetrain_inertia_gain_ = 0.0f;
+    float sync_speed_error_ = 0.0f;   // rad/s
+    float sync_integral_ = 0.0f;      // Nm
+    float sync_proportional_ = 0.0f;  // Nm
+    // Explicit virtual chain state
+    float chain_stretch_ = 0.0f;           // wheel-side radians
+    float chain_torque_ = 0.0f;            // transmitted Nm
+    float virtual_torque_request_ = 0.0f;  // Nm, wheel-side virtual torque - raw PI request
+    float virtual_torque_max_ = 0.0f;      // Nm, wheel-side motor authority
+    float virtual_torque_limited_ = 0.0f;  // Nm, shared chain torque after limits
+
+    float crank_torque_command_ = 0.0f;  // Nm at crank
+    float wheel_torque_command_ = 0.0f;  // Nm at wheel
+
+    float wheel_speed_estimate_ = 0.0f;  // rad/s
+    float wheel_accel_estimate_ = 0.0f;  // rad/s^2
+
+    float crank_motor_torque_ = 0.0f;  // Nm at crank after physical gearbox
+    float wheel_motor_torque_ = 0.0f;  // Nm at wheel after physical gearbox
+
+    float virtual_wheel_speed_ = 0.0f;
 
     Config_t config_;
     TaskTimes task_times_;
 
+   public:  // Power management
+    struct PowerMonitor_t {
+        // DC Bus
+        float bus_voltage = 0.0f;      // V
+        float battery_current = 0.0f;  // A, Estimated
+        float battery_power = 0.0f;    // W, + discharge
+
+        // Individual motor electrical power
+        float pedal_electrical_power = 0.0f;  // W
+        float wheel_electrical_power = 0.0f;  // W
+
+        // Mechanical power at the pedal and wheel
+        float pedal_mechanical_power = 0.0f;  // W
+        float wheel_mechanical_power = 0.0f;  // W
+
+        // Brake resistor power
+        float brake_resistor_power = 0.0f;  // W
+
+        // Diagnostic
+        float power_balance_error = 0.0f;  // W
+    };
+    PowerMonitor_t power_monitor_;
+
+    // power-limit diagnostics
+    float power_limit_factor_ = 1.0f;
+    float battery_discharge_power_request_ = 0.0f;
+    float generator_absorption_power_request_ = 0.0f;
+    float available_regen_sink_power_ = 0.0f;
+    bool battery_discharge_limited_ = false;
+    bool generator_power_limited_ = false;
+
    private:
     void start_bike_controller(void);
 
-    void update_values(void);
-    void update_cadence(float delta_t);
-    void update_rider_torques(float delta_t);
-    void calculate_input_output_gear_ratio(void);
+    void update_measurements(float delta_t);
+    void update_power_monitor();
+    void update_crank_speed(float delta_t);
+#ifdef BIKE_SINGLE_MOTOR_TEST
+    void update_simulated_wheel(float delta_t);
+#endif
     void update_wheel_speed(float delta_t);
-    void update_drive_torque(float delta_t);
+    void update_crank_motor_torque(void);
+    void update_wheel_motor_torque(void);
+    void update_sync_speed_error(void);
+    void update_virtual_drivetrain_pi(float delta_t);
+    void update_virtual_torque_authority(void);
+    void limit_virtual_torque(void);
+    void update_reverse_protection(void);
+
+    void release_virtual_chain();
+    void reconcile_chain_state();
+    void update_stationary_release(float dt);
+
+    void update_virtual_torque_commands(void);
+    void update_virtual_drivetrain_gains(void);
+
+    void apply_power_limits();
+    void reset_power_limits();
+
+    float limit_crank_torque(float requested_torque) const;
+
+    float get_cadence_rpm() const;
+    void update_values(void);
+
+    void update_rider_torques(float delta_t);
+
+    void calculate_target_gear_ratio(float delta_t);
+    void update_active_gear_ratio(float delta_t);
+    void update_auto_cadence(float delta_t);
 
     void check_axis_states(void);
     void update_bike_state(void);
+    void reset_control_state(void);
 
-    bool should_freewheel(void);
+    bool rider_active(void) const;
+    bool rider_stopped(void) const;
+
+    void lowpassfilter(float& value, const float& newVal, const float& alpha);
 
    private:
-    float _last_cadence_estimate = 0.0f;
-    float _last_resistance_torque = 0.0f;
+    float _last_crank_speed_estimate = 0.0f;
     float last_rider_torque = 0.0f;
-    float _last_drive_torque = 0.0f;
     float _last_wheel_speed_estimate = 0.0f;
     unsigned long _last_update_time = 0.0;
+    bool virtual_drivetrain_torque_limited = false;
+    bool crank_reverse_inhibited = false;
+    float chain_standstill_elapsed = 0.0f;
+    bool drivetrain_feedback_valid = false;
 
     Axis* pedalAxis_ = nullptr;
     Axis* driveAxis_ = nullptr;
+    ODrive* odrive_ = nullptr;
 };
 
 #endif

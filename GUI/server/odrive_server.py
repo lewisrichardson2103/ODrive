@@ -271,7 +271,7 @@ def callFunc(odrives, keyList):
         print("fcn call failed")
 
 if __name__ == "__main__":
-    print("args from python: " + str(sys.argv[1:0]))
+    print("args from python: " + str(sys.argv[1:]))
     #print(sys.argv[1:])
     # try to import based on command line arguments or config file
 
@@ -295,4 +295,9 @@ if __name__ == "__main__":
     log = fibre.Logger(verbose=False)
     shutdown = fibre.Event()
 
-    socketio.run(app, host='0.0.0.0', port=5000)
+    socketio.run(
+    app,
+    host='127.0.0.1',
+    port=5000,
+    allow_unsafe_werkzeug=True
+)

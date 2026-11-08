@@ -54,6 +54,7 @@ BIKE_STATE_IDLE                          = 2
 BIKE_STATE_CONTROL                       = 3
 BIKE_STATE_BRAKING                       = 4
 BIKE_STATE_ERROR                         = 5
+BIKE_STATE_TESTING                       = 6
 
 # ODrive.BikeController.BikeMode
 BIKE_MODE_MANUAL                         = 0
@@ -233,6 +234,7 @@ class BikeState(enum.Enum):
     CONTROL                                  = 3
     BRAKING                                  = 4
     ERROR                                    = 5
+    TESTING                                  = 6
 class BikeMode(enum.Enum):
     MANUAL                                   = 0
     AUTO_CADENCE                             = 1
