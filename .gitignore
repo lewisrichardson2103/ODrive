@@ -66,3 +66,9 @@ GUI/build
 
 docs/reStructuredText/_build/
 tools/odrive-cansimple.ini
+
+# PlatformIO generated files
+**/.pio/
+**/.pioenvs/
+**/.piolibdeps/
+**/.vscode/.browse.c_cpp.db*
