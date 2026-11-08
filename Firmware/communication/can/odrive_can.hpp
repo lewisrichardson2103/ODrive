@@ -3,9 +3,10 @@
 
 #include <cmsis_os.h>
 
-#include "canbus.hpp"
-#include "can_simple.hpp"
 #include <autogen/interfaces.hpp>
+
+#include "can_simple.hpp"
+#include "canbus.hpp"
 
 #define CAN_CLK_HZ (42000000)
 #define CAN_CLK_MHZ (42)
@@ -20,12 +21,12 @@ enum {
 };
 
 class ODriveCAN : public CanBusBase, public ODriveIntf::CanIntf {
-public:
+   public:
     struct Config_t {
         uint32_t baud_rate = CAN_BAUD_250K;
         Protocol protocol = PROTOCOL_SIMPLE;
 
-        ODriveCAN* parent = nullptr; // set in apply_config()
+        ODriveCAN* parent = nullptr;  // set in apply_config()
         void set_baud_rate(uint32_t value) { parent->set_baud_rate(value); }
     };
 
@@ -42,7 +43,7 @@ public:
     osThreadId thread_id_;
     const uint32_t stack_size_ = 1024;  // Bytes
 
-private:
+   private:
     static const uint8_t kCanFifoNone = 0xff;
 
     struct ODriveCanSubscription : CanSubscription {
@@ -62,7 +63,21 @@ private:
     // Hardware supports at most 28 filters unless we do optimizations. For now
     // we don't need that many.
     std::array<ODriveCanSubscription, 8> subscriptions_;
-    CAN_HandleTypeDef *handle_ = nullptr;
+    CAN_HandleTypeDef* handle_ = nullptr;
+
+   private:
+    // DigitalEBike custom telemetry
+    static constexpr uint32_t BIKE_CAN_BASE_ID =
+        0x1ABCDE00;
+
+    static constexpr uint8_t BIKE_CAN_FRAME_COUNT = 6;
+    static constexpr uint32_t BIKE_CAN_INTERVAL_MS = 15;
+
+    uint8_t bike_telemetry_frame_ = 0;
+    uint32_t bike_telemetry_last_ms_ = 0;
+
+    uint32_t service_bike_telemetry();
+    bool send_bike_telemetry_frame(uint8_t frame);
 };
 
 #endif  // __ODRIVE_CAN_HPP

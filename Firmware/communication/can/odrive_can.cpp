@@ -2,6 +2,7 @@
 
 #include <can.h>
 #include <cmsis_os.h>
+#include <odrive_main.h>
 
 #include "freertos_vars.h"
 #include "utils.hpp"
@@ -9,7 +10,6 @@
 // Safer context handling via maps instead of arrays
 // #include <unordered_map>
 // std::unordered_map<CAN_HandleTypeDef *, ODriveCAN *> ctxMap;
-
 
 bool ODriveCAN::apply_config() {
     config_.parent = this;
@@ -20,9 +20,7 @@ bool ODriveCAN::apply_config() {
 bool ODriveCAN::reinit() {
     HAL_CAN_Stop(handle_);
     HAL_CAN_ResetError(handle_);
-    return (HAL_CAN_Init(handle_) == HAL_OK)
-        && (HAL_CAN_Start(handle_) == HAL_OK)
-        && (HAL_CAN_ActivateNotification(handle_, CAN_IT_RX_FIFO0_MSG_PENDING | CAN_IT_RX_FIFO1_MSG_PENDING | CAN_IT_TX_MAILBOX_EMPTY) == HAL_OK);
+    return (HAL_CAN_Init(handle_) == HAL_OK) && (HAL_CAN_Start(handle_) == HAL_OK) && (HAL_CAN_ActivateNotification(handle_, CAN_IT_RX_FIFO0_MSG_PENDING | CAN_IT_RX_FIFO1_MSG_PENDING | CAN_IT_TX_MAILBOX_EMPTY) == HAL_OK);
 }
 
 bool ODriveCAN::start_server(CAN_HandleTypeDef* handle) {
@@ -57,6 +55,10 @@ void ODriveCAN::can_server_thread() {
             if (protocol & PROTOCOL_SIMPLE) {
                 next_service_time = std::min(can_simple_.service_stack(), next_service_time);
             }
+
+            next_service_time = std::min(
+                service_bike_telemetry(),
+                next_service_time);
 
             process_rx_fifo(CAN_RX_FIFO0);
             process_rx_fifo(CAN_RX_FIFO1);
@@ -124,7 +126,7 @@ void ODriveCAN::process_rx_fifo(uint32_t fifo) {
 }
 
 // Send a CAN message on the bus
-bool ODriveCAN::send_message(const can_Message_t &txmsg) {
+bool ODriveCAN::send_message(const can_Message_t& txmsg) {
     if (HAL_CAN_GetError(handle_) != HAL_CAN_ERROR_NONE) {
         return false;
     }
@@ -141,13 +143,13 @@ bool ODriveCAN::send_message(const can_Message_t &txmsg) {
     if (!HAL_CAN_GetTxMailboxesFreeLevel(handle_)) {
         return false;
     }
-    
+
     return HAL_CAN_AddTxMessage(handle_, &header, (uint8_t*)txmsg.buf, &retTxMailbox) == HAL_OK;
 }
 
-//void ODriveCAN::set_error(Error error) {
-//    error_ |= error;
-//}
+// void ODriveCAN::set_error(Error error) {
+//     error_ |= error;
+// }
 
 bool ODriveCAN::subscribe(const MsgIdFilterSpecs& filter, on_can_message_cb_t callback, void* ctx, CanSubscription** handle) {
     auto it = std::find_if(subscriptions_.begin(), subscriptions_.end(), [](auto& subscription) {
@@ -155,22 +157,19 @@ bool ODriveCAN::subscribe(const MsgIdFilterSpecs& filter, on_can_message_cb_t ca
     });
 
     if (it == subscriptions_.end()) {
-        return false; // all subscription slots in use
+        return false;  // all subscription slots in use
     }
 
     it->callback = callback;
     it->ctx = ctx;
-    it->fifo = CAN_RX_FIFO0; // TODO: make customizable
+    it->fifo = CAN_RX_FIFO0;  // TODO: make customizable
     if (handle) {
         *handle = &*it;
     }
 
     bool is_extended = filter.id.index() == 1;
-    uint32_t id = is_extended ?
-                  ((std::get<1>(filter.id) << 3) | (1 << 2)) :
-                  (std::get<0>(filter.id) << 21);
-    uint32_t mask = (is_extended ? (filter.mask << 3) : (filter.mask << 21))
-                  | (1 << 2); // care about the is_extended bit
+    uint32_t id = is_extended ? ((std::get<1>(filter.id) << 3) | (1 << 2)) : (std::get<0>(filter.id) << 21);
+    uint32_t mask = (is_extended ? (filter.mask << 3) : (filter.mask << 21)) | (1 << 2);  // care about the is_extended bit
 
     CAN_FilterTypeDef hal_filter;
     hal_filter.FilterActivation = ENABLE;
@@ -195,7 +194,7 @@ bool ODriveCAN::unsubscribe(CanSubscription* handle) {
         return false;
     }
     if (subscription->fifo != kCanFifoNone) {
-        return false; // not in use
+        return false;  // not in use
     }
 
     subscription->fifo = kCanFifoNone;
@@ -205,34 +204,156 @@ bool ODriveCAN::unsubscribe(CanSubscription* handle) {
     return HAL_CAN_ConfigFilter(handle_, &hal_filter) == HAL_OK;
 }
 
-void HAL_CAN_TxMailbox0CompleteCallback(CAN_HandleTypeDef *hcan) {
+// Transmit one bicycle telemetry frame approximately
+// every 15 ms, distributing load across the CAN bus.
+uint32_t ODriveCAN::service_bike_telemetry() {
+    const uint32_t now = HAL_GetTick();
+    const uint32_t elapsed =
+        now - bike_telemetry_last_ms_;
+
+    if (elapsed < BIKE_CAN_INTERVAL_MS) {
+        return BIKE_CAN_INTERVAL_MS - elapsed;
+    }
+
+    if (send_bike_telemetry_frame(
+            bike_telemetry_frame_)) {
+        bike_telemetry_last_ms_ = now;
+
+        bike_telemetry_frame_ =
+            (bike_telemetry_frame_ + 1) %
+            BIKE_CAN_FRAME_COUNT;
+
+        return BIKE_CAN_INTERVAL_MS;
+    }
+
+    // No free CAN mailbox. Retry without blocking.
+    return 2;
+}
+
+bool ODriveCAN::send_bike_telemetry_frame(
+    uint8_t frame) {
+    const auto& bike = odrv.bike_controller_;
+
+    can_Message_t msg = {};
+    msg.id = BIKE_CAN_BASE_ID + frame;
+    msg.isExt = true;
+    msg.rtr = false;
+    msg.len = 8;
+
+    float value0 = 0.0f;
+    float value1 = 0.0f;
+
+    switch (frame) {
+        case 0:
+            // Bicycle speed measurements
+            value0 = bike.cadence_estimate_;
+            value1 = bike.wheel_speed_estimate_;
+            break;
+
+        case 1:
+            // Rider mechanical input
+            value0 = bike.rider_torque_estimate_;
+            value1 = bike.rider_power_estimate_;
+            break;
+
+        case 2:
+            // Virtual drivetrain ratio
+            value0 = bike.input_output_gear_ratio_;
+            value1 = bike.target_input_output_gear_ratio_;
+            break;
+
+        case 3:
+            // Final torque commands after limiting
+            value0 = bike.crank_torque_command_;
+            value1 = bike.wheel_torque_command_;
+            break;
+
+        case 4:
+            // Electrical power
+            value0 = bike.power_monitor_.battery_power;
+            value1 =
+                bike.power_monitor_.brake_resistor_power;
+            break;
+
+        case 5: {
+            // Status and diagnostics
+            value0 = bike.power_limit_factor_;
+
+            // Bytes 0-3: float power limit factor
+            std::memcpy(msg.buf, &value0, sizeof(float));
+
+            // Byte 4: bike controller state
+            msg.buf[4] =
+                static_cast<uint8_t>(bike.current_state_);
+
+            // Byte 5: operating mode
+            msg.buf[5] =
+                static_cast<uint8_t>(bike.mode_);
+
+            // Byte 6: diagnostic flags
+            uint8_t flags = 0;
+
+            if (bike.battery_discharge_limited_)
+                flags |= 0x01;
+
+            if (bike.generator_power_limited_)
+                flags |= 0x02;
+
+            msg.buf[6] = flags;
+
+            // Byte 7: protocol version
+            msg.buf[7] = 1;
+
+            return send_message(msg);
+        }
+
+        default:
+            return false;
+    }
+
+    // Never transmit NaN or infinity as telemetry.
+    if (!std::isfinite(value0)) {
+        value0 = 0.0f;
+    }
+
+    if (!std::isfinite(value1)) {
+        value1 = 0.0f;
+    }
+
+    std::memcpy(&msg.buf[0], &value0, sizeof(float));
+    std::memcpy(&msg.buf[4], &value1, sizeof(float));
+
+    return send_message(msg);
+}
+
+void HAL_CAN_TxMailbox0CompleteCallback(CAN_HandleTypeDef* hcan) {
     HAL_CAN_DeactivateNotification(hcan, CAN_IT_TX_MAILBOX_EMPTY);
     osSemaphoreRelease(sem_can);
 }
-void HAL_CAN_TxMailbox1CompleteCallback(CAN_HandleTypeDef *hcan) {
+void HAL_CAN_TxMailbox1CompleteCallback(CAN_HandleTypeDef* hcan) {
     HAL_CAN_DeactivateNotification(hcan, CAN_IT_TX_MAILBOX_EMPTY);
     osSemaphoreRelease(sem_can);
 }
-void HAL_CAN_TxMailbox2CompleteCallback(CAN_HandleTypeDef *hcan) {
+void HAL_CAN_TxMailbox2CompleteCallback(CAN_HandleTypeDef* hcan) {
     HAL_CAN_DeactivateNotification(hcan, CAN_IT_TX_MAILBOX_EMPTY);
     osSemaphoreRelease(sem_can);
 }
-void HAL_CAN_TxMailbox0AbortCallback(CAN_HandleTypeDef *hcan) {}
-void HAL_CAN_TxMailbox1AbortCallback(CAN_HandleTypeDef *hcan) {}
-void HAL_CAN_TxMailbox2AbortCallback(CAN_HandleTypeDef *hcan) {}
-void HAL_CAN_RxFifo0MsgPendingCallback(CAN_HandleTypeDef *hcan) {
+void HAL_CAN_TxMailbox0AbortCallback(CAN_HandleTypeDef* hcan) {}
+void HAL_CAN_TxMailbox1AbortCallback(CAN_HandleTypeDef* hcan) {}
+void HAL_CAN_TxMailbox2AbortCallback(CAN_HandleTypeDef* hcan) {}
+void HAL_CAN_RxFifo0MsgPendingCallback(CAN_HandleTypeDef* hcan) {
     HAL_CAN_DeactivateNotification(hcan, CAN_IT_RX_FIFO0_MSG_PENDING);
     osSemaphoreRelease(sem_can);
 }
-void HAL_CAN_RxFifo0FullCallback(CAN_HandleTypeDef *hcan) {
+void HAL_CAN_RxFifo0FullCallback(CAN_HandleTypeDef* hcan) {
     HAL_CAN_DeactivateNotification(hcan, CAN_IT_RX_FIFO1_MSG_PENDING);
     osSemaphoreRelease(sem_can);
 }
-void HAL_CAN_RxFifo1MsgPendingCallback(CAN_HandleTypeDef *hcan) {}
-void HAL_CAN_RxFifo1FullCallback(CAN_HandleTypeDef *hcan) {}
-void HAL_CAN_SleepCallback(CAN_HandleTypeDef *hcan) {}
-void HAL_CAN_WakeUpFromRxMsgCallback(CAN_HandleTypeDef *hcan) {}
+void HAL_CAN_RxFifo1MsgPendingCallback(CAN_HandleTypeDef* hcan) {}
+void HAL_CAN_RxFifo1FullCallback(CAN_HandleTypeDef* hcan) {}
+void HAL_CAN_SleepCallback(CAN_HandleTypeDef* hcan) {}
+void HAL_CAN_WakeUpFromRxMsgCallback(CAN_HandleTypeDef* hcan) {}
 
-void HAL_CAN_ErrorCallback(CAN_HandleTypeDef *hcan) {
-    //HAL_CAN_ResetError(hcan);
+void HAL_CAN_ErrorCallback(CAN_HandleTypeDef* hcan) {
+    // HAL_CAN_ResetError(hcan);
 }
