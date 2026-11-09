@@ -1,0 +1,2 @@
+This directory initialises an empty LittleFS partition with PlatformIO uploadfs.
+Do not store or upload HTML here; uploading a filesystem image later replaces logs.
